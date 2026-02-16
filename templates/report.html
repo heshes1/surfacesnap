@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SurfaceSnap Report - {{ result.target }}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; color: #222 }
+      h1 { margin-bottom: 0.2em }
+      .section { margin-top: 1.2em }
+      table { border-collapse: collapse; width: 100%; font-size: 0.95em }
+      th, td { border: 1px solid #ddd; padding: 8px; text-align: left }
+      th { background: #f6f6f6 }
+      .muted { color: #666; font-size: 0.9em }
+      .small { font-size: 0.85em }
+      .wrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px }
+    </style>
+  </head>
+  <body>
+    <h1>SurfaceSnap Report</h1>
+    <p><strong>Target:</strong> {{ result.target }} <span class="muted">&nbsp;•&nbsp;{{ result.timestamp_utc }}</span></p>
+    <p class="muted">Baseline security header assessment aligned with OWASP Secure Headers.</p>
+
+    <div class="section">
+      <h2>Summary</h2>
+      <table>
+        <tr><th>Total hosts</th><td>{{ result.summary.total_hosts }}</td></tr>
+        <tr><th>Resolved hosts</th><td>{{ result.summary.resolved_hosts }}</td></tr>
+        <tr><th>Hosts missing HSTS</th><td>{{ result.summary.missing_hsts_hosts }}</td></tr>
+        <tr><th>Hosts missing CSP</th><td>{{ result.summary.missing_csp_hosts }}</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Hosts</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Host</th>
+            <th>Resolved</th>
+            <th>IPs</th>
+            <th>Scheme / Status</th>
+            <th>HTTP reachable</th>
+            <th>Baseline Score</th>
+            <th>Missing Headers</th>
+            <th>Cookie Issues</th>
+            <th>TLS Not After</th>
+            <th>Risk Chains</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for h in result.hosts %}
+          <tr>
+            <td class="wrap">{{ h.host }}</td>
+            <td>{{ h.resolve.resolved }}</td>
+            <td class="small wrap">{{ h.resolve.ips | join(', ') }}</td>
+            <td class="small">
+              {% if h.http %}
+                {{ h.http.scheme_used }} / {{ h.http.status_code }}
+                <div class="small muted">{{ h.http.final_url or '' }}</div>
+                {% if h.http.scheme_used == 'http' and h.http.https_failed_reason %}
+                  <div class="small" style="color:#a00">HTTPS failed; fell back to HTTP</div>
+                {% endif %}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="small">
+              {% if h.http_reachable %}Yes{% else %}No{% endif %}
+            </td>
+            <td class="small">{{ h.baseline_score or '-' }}</td>
+            <td class="small">
+              {% if h.missing_headers %}
+                {{ h.missing_headers | join(', ') }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="small">
+              {% if h.cookies and h.cookies.issues %}
+                {{ h.cookies.issues | length }} issue(s)
+              {% else %}
+                0
+              {% endif %}
+            </td>
+            <td class="small">{{ h.tls.not_after or '-' }}</td>
+            <td class="small wrap">
+              {% if h.risk_chains %}
+                <ul>
+                {% for c in h.risk_chains %}
+                  <li><strong>[{{ c.severity }}]</strong> {{ c.text }}</li>
+                {% endfor %}
+                </ul>
+              {% else %}
+                -
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </body>
+</html>
