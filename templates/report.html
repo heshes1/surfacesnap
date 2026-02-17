@@ -3,103 +3,350 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SurfaceSnap Report - {{ result.target }}</title>
+    {% set hosts = result.hosts if result is defined and result.hosts is defined else (hosts if hosts is defined else []) %}
+    {% set target_value = result.target if result is defined and result.target is defined else (target if target is defined else none) %}
+    {% set timestamp_value = result.timestamp_utc if result is defined and result.timestamp_utc is defined else (timestamp_utc if timestamp_utc is defined else none) %}
+    <title>SurfaceSnap Report{% if target_value %} - {{ target_value }}{% endif %}</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 20px; color: #222 }
-      h1 { margin-bottom: 0.2em }
-      .section { margin-top: 1.2em }
-      table { border-collapse: collapse; width: 100%; font-size: 0.95em }
-      th, td { border: 1px solid #ddd; padding: 8px; text-align: left }
-      th { background: #f6f6f6 }
-      .muted { color: #666; font-size: 0.9em }
-      .small { font-size: 0.85em }
-      .wrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px }
+      :root {
+        --bg: #F7FAFF;
+        --primary: #1D4ED8;
+        --text: #0F172A;
+        --muted: #475569;
+        --border: #E2E8F0;
+        --card: #FFFFFF;
+        --critical-bg: #FEE2E2;
+        --critical-fg: #B91C1C;
+        --high-bg: #FECACA;
+        --high-fg: #991B1B;
+        --medium-bg: #FEF3C7;
+        --medium-fg: #92400E;
+        --low-bg: #E2E8F0;
+        --low-fg: #334155;
+        --info-bg: #DBEAFE;
+        --info-fg: #1E40AF;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 400 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .page {
+        max-width: 1100px;
+        margin: 28px auto 40px;
+        padding: 0 16px;
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+      }
+      .header {
+        padding: 20px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.7rem;
+        line-height: 1.2;
+      }
+      .subhead {
+        margin-top: 8px;
+        color: var(--muted);
+      }
+      .summary-grid {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .summary-card {
+        padding: 14px;
+      }
+      .summary-label {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .summary-value {
+        margin-top: 4px;
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--primary);
+        line-height: 1.1;
+      }
+      .section {
+        margin-top: 16px;
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      thead th {
+        position: sticky;
+        top: 0;
+        background: #EFF6FF;
+        color: var(--text);
+        border-bottom: 1px solid var(--border);
+        border-top: 1px solid var(--border);
+        z-index: 1;
+      }
+      th,
+      td {
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--border);
+      }
+      tbody tr:nth-child(odd) td {
+        background: #FCFDFF;
+      }
+      tbody tr:hover td {
+        background: #EFF6FF;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .center {
+        text-align: center;
+      }
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        border: 1px solid var(--border);
+        background: #F8FAFC;
+        color: var(--muted);
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+      .sev-critical {
+        background: var(--critical-bg);
+        color: var(--critical-fg);
+      }
+      .sev-high {
+        background: var(--high-bg);
+        color: var(--high-fg);
+      }
+      .sev-medium {
+        background: var(--medium-bg);
+        color: var(--medium-fg);
+      }
+      .sev-low {
+        background: var(--low-bg);
+        color: var(--low-fg);
+      }
+      .sev-info {
+        background: var(--info-bg);
+        color: var(--info-fg);
+      }
+      .details-cell {
+        padding-top: 0;
+      }
+      details {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #FAFCFF;
+        margin-bottom: 10px;
+      }
+      details summary {
+        cursor: pointer;
+        font-weight: 600;
+        padding: 9px 12px;
+        color: var(--primary);
+      }
+      .detail-body {
+        padding: 8px 12px 12px;
+      }
+      .detail-label {
+        font-weight: 600;
+        margin: 8px 0 4px;
+      }
+      .kv {
+        color: var(--muted);
+      }
+      ul {
+        margin: 6px 0 8px 18px;
+        padding: 0;
+      }
+      @media (max-width: 900px) {
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 600px) {
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
-    <h1>SurfaceSnap Report</h1>
-    <p><strong>Target:</strong> {{ result.target }} <span class="muted">&nbsp;•&nbsp;{{ result.timestamp_utc }}</span></p>
-    <p class="muted">Baseline security header assessment aligned with OWASP Secure Headers.</p>
+    {% set ns = namespace(resolved_count=0, missing_hsts_count=0, risk_chain_total=0) %}
+    {% for h in hosts %}
+      {% if h.resolve is defined and h.resolve and h.resolve.resolved %}
+        {% set ns.resolved_count = ns.resolved_count + 1 %}
+      {% endif %}
+      {% set present = h.header_check.present if h.header_check is defined and h.header_check and h.header_check.present is defined else {} %}
+      {% if h.resolve is defined and h.resolve and h.resolve.resolved and not present.get('Strict-Transport-Security', false) %}
+        {% set ns.missing_hsts_count = ns.missing_hsts_count + 1 %}
+      {% endif %}
+      {% set chain_count = (h.risk_chains | default([], true) | length) %}
+      {% set ns.risk_chain_total = ns.risk_chain_total + chain_count %}
+    {% endfor %}
 
-    <div class="section">
-      <h2>Summary</h2>
-      <table>
-        <tr><th>Total hosts</th><td>{{ result.summary.total_hosts }}</td></tr>
-        <tr><th>Resolved hosts</th><td>{{ result.summary.resolved_hosts }}</td></tr>
-        <tr><th>Hosts missing HSTS</th><td>{{ result.summary.missing_hsts_hosts }}</td></tr>
-        <tr><th>Hosts missing CSP</th><td>{{ result.summary.missing_csp_hosts }}</td></tr>
-      </table>
+    <div class="page">
+      <div class="panel header">
+        <h1>SurfaceSnap Report</h1>
+        <div class="subhead">
+          {% if target_value %}<strong>Target:</strong> {{ target_value }}{% else %}<strong>Target:</strong> —{% endif %}
+          {% if timestamp_value %}<span class="muted"> | {{ timestamp_value }}</span>{% endif %}
+        </div>
+        <div class="summary-grid">
+          <div class="panel summary-card">
+            <div class="summary-label">Hosts scanned</div>
+            <div class="summary-value">{{ hosts | length }}</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Resolved</div>
+            <div class="summary-value">{{ ns.resolved_count }}</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Missing HSTS</div>
+            <div class="summary-value">{{ ns.missing_hsts_count }}</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Risk chains</div>
+            <div class="summary-value">{{ ns.risk_chain_total }}</div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="section">
-      <h2>Hosts</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Host</th>
-            <th>Resolved</th>
-            <th>IPs</th>
-            <th>Scheme / Status</th>
-            <th>HTTP reachable</th>
-            <th>Baseline Score</th>
-            <th>Missing Headers</th>
-            <th>Cookie Issues</th>
-            <th>TLS Not After</th>
-            <th>Risk Chains</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for h in result.hosts %}
-          <tr>
-            <td class="wrap">{{ h.host }}</td>
-            <td>{{ h.resolve.resolved }}</td>
-            <td class="small wrap">{{ h.resolve.ips | join(', ') }}</td>
-            <td class="small">
-              {% if h.http %}
-                {{ h.http.scheme_used }} / {{ h.http.status_code }}
-                <div class="small muted">{{ h.http.final_url or '' }}</div>
-                {% if h.http.scheme_used == 'http' and h.http.https_failed_reason %}
-                  <div class="small" style="color:#a00">HTTPS failed; fell back to HTTP</div>
-                {% endif %}
-              {% else %}
-                -
-              {% endif %}
-            </td>
-            <td class="small">
-              {% if h.http_reachable %}Yes{% else %}No{% endif %}
-            </td>
-            <td class="small">{{ h.baseline_score or '-' }}</td>
-            <td class="small">
-              {% if h.missing_headers %}
-                {{ h.missing_headers | join(', ') }}
-              {% else %}
-                -
-              {% endif %}
-            </td>
-            <td class="small">
-              {% if h.cookies and h.cookies.issues %}
-                {{ h.cookies.issues | length }} issue(s)
-              {% else %}
-                0
-              {% endif %}
-            </td>
-            <td class="small">{{ h.tls.not_after or '-' }}</td>
-            <td class="small wrap">
-              {% if h.risk_chains %}
-                <ul>
-                {% for c in h.risk_chains %}
-                  <li><strong>[{{ c.severity }}]</strong> {{ c.text }}</li>
-                {% endfor %}
-                </ul>
-              {% else %}
-                -
-              {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    <div class="page section">
+      <div class="panel">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Scheme</th>
+                <th>HTTP reachable</th>
+                <th>Missing headers</th>
+                <th>Score</th>
+                <th>Risks</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for h in hosts %}
+              {% set missing_headers = h.missing_headers | default([], true) %}
+              {% set risk_chains = h.risk_chains | default([], true) %}
+              {% set cookie_issues = h.cookies.issues if h.cookies is defined and h.cookies and h.cookies.issues is defined else [] %}
+              <tr>
+                <td>{{ h.host | default('—', true) }}</td>
+                <td>{{ h.http.scheme_used if h.http is defined and h.http and h.http.scheme_used is defined and h.http.scheme_used else '—' }}</td>
+                <td class="center">{% if h.http_reachable is defined %}{% if h.http_reachable %}Yes{% else %}No{% endif %}{% else %}—{% endif %}</td>
+                <td>
+                  {% if missing_headers | length > 0 %}
+                    <div><strong>{{ missing_headers | length }}</strong></div>
+                    <div class="chip-row">
+                      {% for mh in missing_headers[:2] %}
+                        <span class="chip">{{ mh }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>{{ h.baseline_score if h.baseline_score is defined and h.baseline_score is not none else '—' }}</td>
+                <td>
+                  {% if risk_chains | length > 0 %}
+                    <div class="chip-row">
+                      {% for c in risk_chains %}
+                        {% set sev = c.severity | default('INFO', true) | upper %}
+                        <span class="badge {% if sev == 'CRITICAL' %}sev-critical{% elif sev == 'HIGH' %}sev-high{% elif sev == 'MEDIUM' %}sev-medium{% elif sev == 'LOW' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+              <tr>
+                <td colspan="6" class="details-cell">
+                  <details>
+                    <summary>Details for {{ h.host | default('—', true) }}</summary>
+                    <div class="detail-body">
+                      <div class="detail-label">Missing headers</div>
+                      {% if missing_headers | length > 0 %}
+                        <div class="chip-row">
+                          {% for mh in missing_headers %}
+                            <span class="chip">{{ mh }}</span>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <div class="kv">—</div>
+                      {% endif %}
 
+                      <div class="detail-label">Cookie issues</div>
+                      {% if cookie_issues | length > 0 %}
+                        <ul>
+                          {% for issue in cookie_issues %}
+                            <li>{{ issue }}</li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        <div class="kv">—</div>
+                      {% endif %}
+
+                      <div class="detail-label">TLS info</div>
+                      <div class="kv">Expired: {{ h.tls.expired if h.tls is defined and h.tls and h.tls.expired is defined else '—' }}</div>
+                      <div class="kv">Expires soon: {{ h.tls.expires_soon if h.tls is defined and h.tls and h.tls.expires_soon is defined else '—' }}</div>
+                      <div class="kv">Not after: {{ h.tls.not_after if h.tls is defined and h.tls and h.tls.not_after is defined and h.tls.not_after else '—' }}</div>
+
+                      <div class="detail-label">Full risk chains</div>
+                      {% if risk_chains | length > 0 %}
+                        <ul>
+                          {% for c in risk_chains %}
+                            {% set sev = c.severity | default('INFO', true) | upper %}
+                            <li>
+                              <span class="badge {% if sev == 'CRITICAL' %}sev-critical{% elif sev == 'HIGH' %}sev-high{% elif sev == 'MEDIUM' %}sev-medium{% elif sev == 'LOW' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
+                              {{ c.text | default('—', true) }}
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        <div class="kv">—</div>
+                      {% endif %}
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
