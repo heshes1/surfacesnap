@@ -3,6 +3,7 @@ import dns.resolver
 import socket
 from datetime import datetime
 from typing import List, Dict, Any
+from urllib.parse import urlparse
 from checks import (
     resolve_host,
     fetch_http_info,
@@ -12,6 +13,13 @@ from checks import (
 )
 from checks import check_http_reachable
 import certifi
+
+
+def extract_hostname(target: str) -> str:
+    if "://" in target:
+        parsed = urlparse(target)
+        return parsed.hostname or target
+    return target
 
 
 def scan(target):
@@ -188,7 +196,8 @@ def scan_target(domain: str, timeout: int, max_hosts: int | None = None, ca_bund
         }
 
         # DNS resolution
-        res = resolve_host(host, timeout)
+        host_for_dns = extract_hostname(host)
+        res = resolve_host(host_for_dns, timeout)
         entry["resolve"] = res
 
         if res.get("resolved"):

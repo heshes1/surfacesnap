@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    
+    
+    
+    <title>SurfaceSnap Report - http://example.com</title>
+    <style>
+      :root {
+        --bg: #F7FAFF;
+        --primary: #1D4ED8;
+        --text: #0F172A;
+        --muted: #475569;
+        --border: #E2E8F0;
+        --card: #FFFFFF;
+        --critical-bg: #FEE2E2;
+        --critical-fg: #B91C1C;
+        --high-bg: #FECACA;
+        --high-fg: #991B1B;
+        --medium-bg: #FEF3C7;
+        --medium-fg: #92400E;
+        --low-bg: #E2E8F0;
+        --low-fg: #334155;
+        --info-bg: #DBEAFE;
+        --info-fg: #1E40AF;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 400 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .page {
+        max-width: 1100px;
+        margin: 28px auto 40px;
+        padding: 0 16px;
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+      }
+      .header {
+        padding: 20px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.7rem;
+        line-height: 1.2;
+      }
+      .subhead {
+        margin-top: 8px;
+        color: var(--muted);
+      }
+      .summary-grid {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .summary-card {
+        padding: 14px;
+      }
+      .summary-label {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .summary-value {
+        margin-top: 4px;
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--primary);
+        line-height: 1.1;
+      }
+      .section {
+        margin-top: 16px;
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      thead th {
+        position: sticky;
+        top: 0;
+        background: #EFF6FF;
+        color: var(--text);
+        border-bottom: 1px solid var(--border);
+        border-top: 1px solid var(--border);
+        z-index: 1;
+      }
+      th,
+      td {
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--border);
+      }
+      tbody tr:nth-child(odd) td {
+        background: #FCFDFF;
+      }
+      tbody tr:hover td {
+        background: #EFF6FF;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .center {
+        text-align: center;
+      }
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        border: 1px solid var(--border);
+        background: #F8FAFC;
+        color: var(--muted);
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+      .sev-critical {
+        background: var(--critical-bg);
+        color: var(--critical-fg);
+      }
+      .sev-high {
+        background: var(--high-bg);
+        color: var(--high-fg);
+      }
+      .sev-medium {
+        background: var(--medium-bg);
+        color: var(--medium-fg);
+      }
+      .sev-low {
+        background: var(--low-bg);
+        color: var(--low-fg);
+      }
+      .sev-info {
+        background: var(--info-bg);
+        color: var(--info-fg);
+      }
+      .details-cell {
+        padding-top: 0;
+      }
+      details {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #FAFCFF;
+        margin-bottom: 10px;
+      }
+      details summary {
+        cursor: pointer;
+        font-weight: 600;
+        padding: 9px 12px;
+        color: var(--primary);
+      }
+      .detail-body {
+        padding: 8px 12px 12px;
+      }
+      .detail-label {
+        font-weight: 600;
+        margin: 8px 0 4px;
+      }
+      .kv {
+        color: var(--muted);
+      }
+      ul {
+        margin: 6px 0 8px 18px;
+        padding: 0;
+      }
+      @media (max-width: 900px) {
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 600px) {
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    
+    
+      
+        
+      
+      
+      
+        
+      
+      
+      
+    
+
+    <div class="page">
+      <div class="panel header">
+        <h1>SurfaceSnap Report</h1>
+        <div class="subhead">
+          <strong>Target:</strong> http://example.com
+          <span class="muted"> | 2026-02-19T13:25:57Z</span>
+        </div>
+        <div class="summary-grid">
+          <div class="panel summary-card">
+            <div class="summary-label">Hosts scanned</div>
+            <div class="summary-value">1</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Resolved</div>
+            <div class="summary-value">1</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Missing HSTS</div>
+            <div class="summary-value">1</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Risk chains</div>
+            <div class="summary-value">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page section">
+      <div class="panel">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Scheme</th>
+                <th>HTTP reachable</th>
+                <th>Missing headers</th>
+                <th>Score</th>
+                <th>Risks</th>
+              </tr>
+            </thead>
+            <tbody>
+            
+              
+              
+              
+              <tr>
+                <td>http://example.com</td>
+                <td>—</td>
+                <td class="center">No</td>
+                <td>
+                  
+                    <div><strong>6</strong></div>
+                    <div class="chip-row">
+                      
+                        <span class="chip">Strict-Transport-Security</span>
+                      
+                        <span class="chip">Content-Security-Policy</span>
+                      
+                    </div>
+                  
+                </td>
+                <td>20</td>
+                <td>
+                  
+                    —
+                  
+                </td>
+              </tr>
+              <tr>
+                <td colspan="6" class="details-cell">
+                  <details>
+                    <summary>Details for http://example.com</summary>
+                    <div class="detail-body">
+                      <div class="detail-label">Missing headers</div>
+                      
+                        <div class="chip-row">
+                          
+                            <span class="chip">Strict-Transport-Security</span>
+                          
+                            <span class="chip">Content-Security-Policy</span>
+                          
+                            <span class="chip">X-Frame-Options</span>
+                          
+                            <span class="chip">X-Content-Type-Options</span>
+                          
+                            <span class="chip">Referrer-Policy</span>
+                          
+                            <span class="chip">Permissions-Policy</span>
+                          
+                        </div>
+                      
+
+                      <div class="detail-label">Cookie issues</div>
+                      
+                        <div class="kv">—</div>
+                      
+
+                      <div class="detail-label">TLS info</div>
+                      <div class="kv">Expired: False</div>
+                      <div class="kv">Expires soon: False</div>
+                      <div class="kv">Not after: —</div>
+
+                      <div class="detail-label">Full risk chains</div>
+                      
+                        <div class="kv">—</div>
+                      
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

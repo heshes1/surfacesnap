@@ -3,3 +3,4 @@ dnspython
 jinja2
 certifi
 truststore
+typer

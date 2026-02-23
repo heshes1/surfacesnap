@@ -1,0 +1,92 @@
+{
+  "target": "example.com",
+  "timestamp_utc": "2026-02-19T13:25:05Z",
+  "hosts": [
+    {
+      "host": "example.com",
+      "http": {
+        "scheme_used": "https",
+        "status_code": 200,
+        "final_url": "https://example.com/",
+        "response_headers": {
+          "content-type": "text/html",
+          "date": "Thu, 19 Feb 2026 13:25:05 GMT",
+          "server": "cloudflare"
+        },
+        "https_failed_reason": null
+      },
+      "resolve": {
+        "host": "example.com",
+        "resolved": true,
+        "ips": [
+          "104.18.27.120",
+          "104.18.26.120",
+          "2606:4700::6812:1a78",
+          "2606:4700::6812:1b78"
+        ]
+      },
+      "http_reachable": true,
+      "header_check": {
+        "missing_headers": [
+          "Strict-Transport-Security",
+          "Content-Security-Policy",
+          "X-Frame-Options",
+          "X-Content-Type-Options",
+          "Referrer-Policy",
+          "Permissions-Policy"
+        ],
+        "present": {
+          "Strict-Transport-Security": false,
+          "Content-Security-Policy": false,
+          "X-Frame-Options": false,
+          "X-Content-Type-Options": false,
+          "Referrer-Policy": false,
+          "Permissions-Policy": false
+        }
+      },
+      "missing_headers": [
+        "Strict-Transport-Security",
+        "Content-Security-Policy",
+        "X-Frame-Options",
+        "X-Content-Type-Options",
+        "Referrer-Policy",
+        "Permissions-Policy"
+      ],
+      "headers_present": {
+        "Strict-Transport-Security": false,
+        "Content-Security-Policy": false,
+        "X-Frame-Options": false,
+        "X-Content-Type-Options": false,
+        "Referrer-Policy": false,
+        "Permissions-Policy": false
+      },
+      "cookies": {
+        "cookie_count": 0,
+        "issues": [],
+        "details": []
+      },
+      "baseline_score": 20,
+      "tls": {
+        "enabled": true,
+        "not_after": "2026-05-14",
+        "expired": false,
+        "expires_soon": false,
+        "issuer": "countryName=US, organizationName=SSL Corporation, commonName=Cloudflare TLS Issuing ECC CA 3"
+      },
+      "risk_chains": [
+        {
+          "severity": "MEDIUM",
+          "text": "Possible SSL stripping / downgrade risk (missing HSTS)."
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_hosts": 1,
+    "resolved_hosts": 1,
+    "missing_hsts_hosts": 1,
+    "missing_csp_hosts": 1,
+    "average_baseline_score": 20
+  },
+  "ca_bundle_used": "C:\\Users\\rea0m\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\certifi\\cacert.pem"
+}

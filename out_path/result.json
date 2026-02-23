@@ -1,0 +1,83 @@
+{
+  "target": "https://example.com/some/path",
+  "timestamp_utc": "2026-02-19T13:25:32Z",
+  "hosts": [
+    {
+      "host": "https://example.com/some/path",
+      "http": {
+        "scheme_used": null,
+        "status_code": null,
+        "final_url": null,
+        "response_headers": {},
+        "https_failed_reason": "HTTPSConnectionPool(host='https', port=443): Max retries exceeded with url: /example.com/some/path (Caused by NameResolutionError(\"HTTPSConnection(host='https', port=443): Failed to resolve 'https' ([Errno 11001] getaddrinfo failed)\"))"
+      },
+      "resolve": {
+        "host": "example.com",
+        "resolved": true,
+        "ips": [
+          "104.18.27.120",
+          "104.18.26.120",
+          "2606:4700::6812:1b78",
+          "2606:4700::6812:1a78"
+        ]
+      },
+      "http_reachable": false,
+      "header_check": {
+        "missing_headers": [
+          "Strict-Transport-Security",
+          "Content-Security-Policy",
+          "X-Frame-Options",
+          "X-Content-Type-Options",
+          "Referrer-Policy",
+          "Permissions-Policy"
+        ],
+        "present": {
+          "Strict-Transport-Security": false,
+          "Content-Security-Policy": false,
+          "X-Frame-Options": false,
+          "X-Content-Type-Options": false,
+          "Referrer-Policy": false,
+          "Permissions-Policy": false
+        }
+      },
+      "missing_headers": [
+        "Strict-Transport-Security",
+        "Content-Security-Policy",
+        "X-Frame-Options",
+        "X-Content-Type-Options",
+        "Referrer-Policy",
+        "Permissions-Policy"
+      ],
+      "headers_present": {
+        "Strict-Transport-Security": false,
+        "Content-Security-Policy": false,
+        "X-Frame-Options": false,
+        "X-Content-Type-Options": false,
+        "Referrer-Policy": false,
+        "Permissions-Policy": false
+      },
+      "cookies": {
+        "cookie_count": 0,
+        "issues": [],
+        "details": []
+      },
+      "baseline_score": 20,
+      "tls": {
+        "enabled": false,
+        "not_after": null,
+        "expired": false,
+        "expires_soon": false,
+        "issuer": null
+      },
+      "risk_chains": []
+    }
+  ],
+  "summary": {
+    "total_hosts": 1,
+    "resolved_hosts": 1,
+    "missing_hsts_hosts": 1,
+    "missing_csp_hosts": 1,
+    "average_baseline_score": 20
+  },
+  "ca_bundle_used": "C:\\Users\\rea0m\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\certifi\\cacert.pem"
+}

@@ -1,0 +1,46 @@
+{
+  "target": "https://example.org",
+  "timestamp_utc": "2026-02-19T13:18:30Z",
+  "hosts": [
+    {
+      "host": "https://example.org",
+      "http": {
+        "scheme_used": null,
+        "status_code": null,
+        "final_url": null,
+        "response_headers": {},
+        "https_failed_reason": null
+      },
+      "resolve": {
+        "host": "https://example.org",
+        "resolved": false,
+        "ips": []
+      },
+      "header_check": {
+        "missing_headers": [],
+        "present": {}
+      },
+      "cookies": {
+        "cookie_count": 0,
+        "issues": [],
+        "details": []
+      },
+      "tls": {
+        "enabled": false,
+        "not_after": null,
+        "expired": false,
+        "expires_soon": false,
+        "issuer": null
+      },
+      "risk_chains": []
+    }
+  ],
+  "summary": {
+    "total_hosts": 1,
+    "resolved_hosts": 0,
+    "missing_hsts_hosts": 0,
+    "missing_csp_hosts": 0,
+    "average_baseline_score": 0
+  },
+  "ca_bundle_used": "C:\\Users\\rea0m\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\certifi\\cacert.pem"
+}
