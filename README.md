@@ -1,112 +1,204 @@
-SurfaceSnap
-===========
+# SurfaceSnap
 
-SurfaceSnap is a Python-based baseline security analyzer that performs non-intrusive attack surface checks, evaluates OWASP Secure Headers posture, and generates automated HTML/JSON security reports with risk-chain analysis.
+SurfaceSnap is a Python based, non intrusive security surface analyzer.
 
-Installation
-------------
+It performs passive discovery and baseline security posture checks, generating structured JSON and HTML reports. It is designed for authorized security testing and asset visibility. It does not perform exploitation.
 
-Install required dependencies:
+## Features
+
+For each target, SurfaceSnap:
+
+- Discovers subdomains via Certificate Transparency (crt.sh)
+    
+- Performs DNS resolution (A / AAAA)
+    
+- Attempts HTTPS first
+    
+- Collects HTTP response headers
+    
+- Evaluates baseline security headers:
+    
+    - `Strict-Transport-Security`
+        
+    - `Content-Security-Policy`
+        
+    - `X-Frame-Options`
+        
+    - `X-Content-Type-Options`
+        
+    - `Referrer-Policy`
+        
+    - `Permissions-Policy`
+        
+- Analyzes cookies (`Secure`, `HttpOnly`, `SameSite`)
+    
+- Inspects TLS certificate metadata (if HTTPS succeeds)
+    
+- Builds simple risk chains
+    
+- Calculates a `baseline_score` (0–100)
+    
+
+All checks are non-intrusive.
+
+## Target Input
+
+You may provide:
+
+- `example.com`
+    
+- `http://example.com`
+    
+- `https://example.com`
+    
+- `https://example.com/some/path`
+    
+
+DNS resolution is performed against the extracted hostname.
+
+## Installation
 
 ```bash
+python -m venv venv
+
+# Linux/macOS
+source venv/bin/activate
+
+# Windows
+venv\Scripts\activate
+
 pip install -r requirements.txt
 ```
 
-Usage
------
+### Dependencies
 
-Run a surface scan and write reports to an output directory:
+- requests
+    
+- dnspython
+    
+- jinja2
+    
+- certifi
+    
+- truststore
+    
+- typer
+
+## Usage
+
+SurfaceSnap uses a Typer-based CLI.
+
+### Scan a Single Target
 
 ```bash
 python main.py scan --target example.com --out out
 ```
 
-You can provide a custom CA bundle for HTTPS verification with `--ca-bundle`:
+### Scan Multiple Targets
 
 ```bash
-python main.py scan --target example.com --out out --ca-bundle C:\path\to\corp-root.pem
+python main.py scan --targets-file targets.txt --out out
 ```
 
-Notes
------
-
-- All checks are non-intrusive (DNS lookups, TLS inspection, HTTP header retrieval). Do not run this tool against targets you are not authorized to test. Use it only for authorized security testing and asset discovery within your scope.
-
-Project layout
---------------
-
-- `main.py` — CLI entrypoint
-- `scanner.py` — orchestration and subdomain discovery
-- `checks.py` — low-level network and header checks
-- `report.py` — JSON and HTML report writers
-- `templates/` — Jinja2 templates for HTML report
-- `requirements.txt` — Python dependencies
-
-License
--------
-
-(Add your preferred license file before publishing.)
-# SurfaceSnap
-
-SurfaceSnap is a minimal baseline security analyzer that performs non-intrusive surface checks (DNS resolution, certificate discovery, and basic HTTP header checks) and generates a simple HTML report.
-
-Installation
-
-- Create a virtual environment and install dependencies:
-
-```powershell
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Quick example
-
-```powershell
-python main.py scan --target example.com --out out --timeout 3
-```
-
-Screenshot instructions
-
-- Open the generated `out/report.html` in your browser and use your OS/browser screenshot tool (or `Print -> Save as PDF`) to capture the report. On Windows use `Win+Shift+S` to capture a region.
-
-What it checks (baseline)
-
-- DNS resolution and certificate entries discovered via crt.sh (passive).
-- HTTP(S) reachability and selected security headers (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy).
-- Cookie attributes (`Secure`, `HttpOnly`, `SameSite`) and simple TLS certificate expiry checks.
-
-Why HSTS matters (short)
-
-- HSTS tells browsers to only use HTTPS for a host. Without HSTS an attacker on the network could downgrade connections (SSL stripping), exposing cookies and session tokens. SurfaceSnap flags missing HSTS as a baseline risk.
-
-Example output (CLI)
+Example `targets.txt`:
 
 ```
-Scanned: 10 host(s); Resolved: 3; Missing HSTS: 3
-Reports: out\report.html, out\result.json
+https://example.com
+https://example.org
 ```
 
-Example snippet (JSON host entry)
+---
 
-```json
-{
-	"host": "example.com",
-	"resolve": {"host": "example.com", "resolved": true, "ips": ["93.184.216.34"]},
-	"http": {"scheme_used": "https", "status_code": 200},
-	"header_check": {"missing_headers": ["content-security-policy"], "present": {"strict-transport-security": true}},
-	"cookies": {"cookie_count": 1, "issues": ["Cookie 'sid' missing HttpOnly"]},
-	"tls": {"enabled": true, "not_after": "2026-09-01"},
-	"risk_chains": ["Possible SSL stripping / downgrade risk (missing HSTS)."]
-}
+### Optional Parameters
+
+```bash
+python main.py scan \
+  --target example.com \
+  --timeout 5 \
+  --max-hosts 10 \
+  --ca-bundle /path/to/ca.pem
 ```
 
-Legal / Ethical note
+Options:
 
-- Non-intrusive checks only. Use only with authorization. Always obtain permission before scanning systems you do not own.
+- `--timeout` (default: 5)
+    
+- `--max-hosts` (0 = unlimited)
+    
+- `--ca-bundle` custom PEM file (otherwise certifi is used)
 
-Design choices
+## Output
 
-- crt.sh: public Certificate Transparency data is a low-impact way to discover issued names for a domain without active probing.
-- Headers baseline: checking a small set of widely-adopted security headers gives quick, low-risk indicators of hardening (HSTS, CSP, XFO, etc.).
-- Risk chains: simple, human-readable chains (e.g., downgrade → cookie exposure) make it easier to reason about combined weaknesses without overclaiming.
+Two files are generated in the output directory:
+
+- `report.html`
+    
+- `result.json`
+    
+
+### JSON Structure
+
+- `target`
+    
+- `timestamp_utc`
+    
+- `hosts[]`
+    
+    - `http`
+        
+    - `resolve`
+        
+    - `http_reachable`
+        
+    - `header_check`
+        
+    - `missing_headers`
+        
+    - `headers_present`
+        
+    - `cookies`
+        
+    - `baseline_score`
+        
+    - `tls`
+        
+    - `risk_chains`
+        
+- `summary`
+    
+- `ca_bundle_used`
+
+## HTTPS & TLS Behavior
+
+- HTTPS is attempted first.
+    
+- If HTTPS negotiation succeeds, TLS metadata is collected.
+    
+- If HTTPS fails, TLS fields remain disabled.
+    
+- DNS resolution failures prevent HTTP checks.
+  
+## Scoring
+
+Each resolved host receives a `baseline_score` between 0 and 100.
+
+Score reductions occur due to:
+
+- Missing security headers
+    
+- Cookie security issues
+    
+- Certain downgrade scenarios (e.g., missing HSTS)
+    
+
+Example scores:
+
+- `example.com` → 20
+    
+- `juice-shop.herokuapp.com` → 40
+
+## Legal Use
+
+SurfaceSnap performs passive checks only (DNS, TLS inspection, HTTP headers).
+
+Use only against systems you own or are explicitly authorized to test.
