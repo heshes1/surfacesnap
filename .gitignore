@@ -1,5 +1,21 @@
+# Python
+
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+dist/
+build/
 .venv/
-out/
-out2/
+venv/
+
+# Generated scan outputs
+
+out*/
+out_*/
+example_report/
+
+# Generated reports
+
+*.json
+*.html
+!templates/report.html

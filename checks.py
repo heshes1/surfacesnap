@@ -1,11 +1,12 @@
-import dns.resolver
-import requests
 import re
 import socket
 import ssl
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List
+
 import certifi
-from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any
+import dns.resolver
+import requests
 
 
 def resolve_host(host: str, timeout: int) -> Dict[str, Any]:
@@ -29,7 +30,11 @@ def resolve_host(host: str, timeout: int) -> Dict[str, Any]:
     return {"host": host, "resolved": len(ips) > 0, "ips": ips}
 
 
-def fetch_http_info(host: str, timeout: int, ca_bundle: str | None = None) -> Dict[str, Any]:
+def fetch_http_info(
+    host: str,
+    timeout: int,
+    ca_bundle: str | None = None,
+) -> Dict[str, Any]:
     """Attempt HTTPS then HTTP GET to collect basic response info.
 
     Returns a dict with:
@@ -55,13 +60,26 @@ def fetch_http_info(host: str, timeout: int, ca_bundle: str | None = None) -> Di
     https_url = f"https://{host}"
     verify = ca_bundle if ca_bundle else certifi.where()
     try:
-        resp = requests.get(https_url, allow_redirects=True, timeout=timeout, headers=session_headers, verify=verify)
+        resp = requests.get(
+            https_url,
+            allow_redirects=True,
+            timeout=timeout,
+            headers=session_headers,
+            verify=verify,
+        )
         normalized = {k.lower(): v for k, v in resp.headers.items()}
 
         # Baseline keys (already used by header checks)
         baseline_keys = set(wanted)
         # Small whitelist to aid observability without bloating output
-        whitelist = {"server", "date", "content-type", "content-length", "cache-control", "location"}
+        whitelist = {
+            "server",
+            "date",
+            "content-type",
+            "content-length",
+            "cache-control",
+            "location",
+        }
         keep_keys = baseline_keys.union({"set-cookie"}).union(whitelist)
 
         response_headers = {k: normalized[k] for k in keep_keys if k in normalized}
@@ -78,11 +96,23 @@ def fetch_http_info(host: str, timeout: int, ca_bundle: str | None = None) -> Di
         https_reason = str(e)
         try:
             http_url = f"http://{host}"
-            resp = requests.get(http_url, allow_redirects=True, timeout=timeout, headers=session_headers)
+            resp = requests.get(
+                http_url,
+                allow_redirects=True,
+                timeout=timeout,
+                headers=session_headers,
+            )
             normalized = {k.lower(): v for k, v in resp.headers.items()}
 
             baseline_keys = set(wanted)
-            whitelist = {"server", "date", "content-type", "content-length", "cache-control", "location"}
+            whitelist = {
+                "server",
+                "date",
+                "content-type",
+                "content-length",
+                "cache-control",
+                "location",
+            }
             keep_keys = baseline_keys.union({"set-cookie"}).union(whitelist)
 
             response_headers = {k: normalized[k] for k in keep_keys if k in normalized}
@@ -95,13 +125,29 @@ def fetch_http_info(host: str, timeout: int, ca_bundle: str | None = None) -> Di
                 "https_failed_reason": https_reason,
             }
         except Exception:
-            return {"scheme_used": None, "status_code": None, "final_url": None, "response_headers": {}, "https_failed_reason": https_reason}
+            return {
+                "scheme_used": None,
+                "status_code": None,
+                "final_url": None,
+                "response_headers": {},
+                "https_failed_reason": https_reason,
+            }
     except Exception:
-        # Other errors (e.g., invalid URL formation) — do not fallback to HTTP
-        return {"scheme_used": None, "status_code": None, "final_url": None, "response_headers": {}, "https_failed_reason": None}
+        # Other errors (e.g., invalid URL formation) - do not fallback to HTTP
+        return {
+            "scheme_used": None,
+            "status_code": None,
+            "final_url": None,
+            "response_headers": {},
+            "https_failed_reason": None,
+        }
 
 
-def check_http_reachable(host: str, timeout: int, ca_bundle: str | None = None) -> bool:
+def check_http_reachable(
+    host: str,
+    timeout: int,
+    ca_bundle: str | None = None,
+) -> bool:
     """Return True if a HEAD request to http://{host} returns any HTTP status code.
 
     Uses `User-Agent: SurfaceSnap/1.0`, `allow_redirects=True`, and given `timeout`.
@@ -109,7 +155,12 @@ def check_http_reachable(host: str, timeout: int, ca_bundle: str | None = None) 
     """
     try:
         headers = {"User-Agent": "SurfaceSnap/1.0"}
-        resp = requests.head(f"http://{host}", allow_redirects=True, timeout=timeout, headers=headers)
+        resp = requests.head(
+            f"http://{host}",
+            allow_redirects=True,
+            timeout=timeout,
+            headers=headers,
+        )
         return hasattr(resp, "status_code")
     except Exception:
         return False
@@ -134,7 +185,9 @@ def baseline_header_check(headers: Dict[str, str]) -> Dict[str, Any]:
     }
 
     present = {display: (lower in normalized) for lower, display in baseline.items()}
-    missing = [display for lower, display in baseline.items() if lower not in normalized]
+    missing = [
+        display for lower, display in baseline.items() if lower not in normalized
+    ]
     return {"missing_headers": missing, "present": present}
 
 
@@ -206,20 +259,36 @@ def analyze_cookies(headers: Dict[str, str]) -> Dict[str, Any]:
                     samesite = "Unknown"
                 break
 
-        details.append({"name": name, "secure": secure, "httponly": httponly, "samesite": samesite, "raw": c})
+        details.append(
+            {
+                "name": name,
+                "secure": secure,
+                "httponly": httponly,
+                "samesite": samesite,
+                "raw": c,
+            }
+        )
 
         # Issues
         if samesite == "None" and not secure:
-            issues.append(f"Cookie '{name}' uses SameSite=None but is missing Secure (high concern)")
+            issues.append(
+                f"Cookie '{name}' uses SameSite=None but is missing Secure (high concern)"
+            )
         if not httponly:
             issues.append(f"Cookie '{name}' is missing HttpOnly")
         if https_used and not secure:
-            issues.append(f"Cookie '{name}' is missing Secure while site appears to use HTTPS")
+            issues.append(
+                f"Cookie '{name}' is missing Secure while site appears to use HTTPS"
+            )
 
     return {"cookie_count": len(details), "issues": issues, "details": details}
 
 
-def get_tls_info(host: str, timeout: int, ca_bundle: str | None = None) -> Dict[str, Any]:
+def get_tls_info(
+    host: str,
+    timeout: int,
+    ca_bundle: str | None = None,
+) -> Dict[str, Any]:
     """Inspect TLS on host:443 using stdlib socket+ssl.
 
     Returns:
@@ -250,7 +319,13 @@ def get_tls_info(host: str, timeout: int, ca_bundle: str | None = None) -> Dict[
             with ctx.wrap_socket(sock, server_hostname=host) as ssock:
                 cert = ssock.getpeercert()
     except Exception:
-        return {"enabled": False, "not_after": None, "expired": False, "expires_soon": False, "issuer": None}
+        return {
+            "enabled": False,
+            "not_after": None,
+            "expired": False,
+            "expires_soon": False,
+            "issuer": None,
+        }
 
     enabled = True
     not_after_str = None
@@ -292,7 +367,13 @@ def get_tls_info(host: str, timeout: int, ca_bundle: str | None = None) -> Dict[
             except Exception:
                 issuer_str = str(issuer)
 
-    return {"enabled": enabled, "not_after": not_after_str, "expired": expired, "expires_soon": expires_soon, "issuer": issuer_str}
+    return {
+        "enabled": enabled,
+        "not_after": not_after_str,
+        "expired": expired,
+        "expires_soon": expires_soon,
+        "issuer": issuer_str,
+    }
 
 
 def run_checks(data):
@@ -305,10 +386,28 @@ def run_checks(data):
 
     if headers:
         if "strict-transport-security" not in headers:
-            issues.append({"id": "hsts-missing", "severity": "low", "description": "HSTS header is missing"})
+            issues.append(
+                {
+                    "id": "hsts-missing",
+                    "severity": "low",
+                    "description": "HSTS header is missing",
+                }
+            )
         if "content-security-policy" not in headers:
-            issues.append({"id": "csp-missing", "severity": "low", "description": "Content-Security-Policy header is missing"})
+            issues.append(
+                {
+                    "id": "csp-missing",
+                    "severity": "low",
+                    "description": "Content-Security-Policy header is missing",
+                }
+            )
         if "x-frame-options" not in headers:
-            issues.append({"id": "xfo-missing", "severity": "low", "description": "X-Frame-Options header is missing"})
+            issues.append(
+                {
+                    "id": "xfo-missing",
+                    "severity": "low",
+                    "description": "X-Frame-Options header is missing",
+                }
+            )
 
     return issues

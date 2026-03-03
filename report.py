@@ -1,7 +1,8 @@
-from jinja2 import Environment, FileSystemLoader, select_autoescape
-import os
 import json
-from typing import Dict, Any
+import os
+from typing import Any, Dict
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
 def write_json(result: Dict[str, Any], out_dir: str) -> str:
@@ -29,7 +30,11 @@ def write_html(result: Dict[str, Any], out_dir: str) -> str:
     return out_path
 
 
-def write_reports(result: Dict[str, Any], out_dir: str, base_name: str = "surfacesnap-report"):
+def write_reports(
+    result: Dict[str, Any],
+    out_dir: str,
+    base_name: str = "surfacesnap-report",
+) -> tuple[str, str]:
     """Backward-compatible helper: write JSON and HTML reports to `out_dir`.
 
     Returns tuple(html_path, json_path).

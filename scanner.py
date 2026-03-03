@@ -1,18 +1,19 @@
-import requests
+import certifi
 import dns.resolver
+import requests
 import socket
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 from urllib.parse import urlparse
+
 from checks import (
-    resolve_host,
-    fetch_http_info,
-    baseline_header_check,
     analyze_cookies,
+    baseline_header_check,
+    check_http_reachable,
+    fetch_http_info,
     get_tls_info,
+    resolve_host,
 )
-from checks import check_http_reachable
-import certifi
 
 
 def extract_hostname(target: str) -> str:
@@ -39,33 +40,56 @@ def build_risk_chains(result: Dict[str, Any]) -> List[str]:
     cookies = result.get("cookies") or {}
 
     http_reachable = bool(result.get("http_reachable", False))
-    hsts_missing = "Strict-Transport-Security" in (header_check.get("missing_headers") or [])
+    hsts_missing = "Strict-Transport-Security" in (
+        header_check.get("missing_headers") or []
+    )
 
     # Downgrade risk: only when plain HTTP is reachable and HSTS is missing
     downgrade_risk = http_reachable and hsts_missing
     if downgrade_risk:
-        chains.append({"severity": "MEDIUM", "text": "Possible SSL stripping / downgrade risk (missing HSTS)."})
+        chains.append(
+            {
+                "severity": "MEDIUM",
+                "text": "Possible SSL stripping / downgrade risk (missing HSTS).",
+            }
+        )
 
         # Check for high-severity cookie issues indicating exposure
         cookie_issues = cookies.get("issues", []) if isinstance(cookies, dict) else []
         cookie_details = cookies.get("details", []) if isinstance(cookies, dict) else []
         insecure_cookie = any(not d.get("secure", False) for d in cookie_details)
-        high_cookie_issue = any(
-            (
-                "high concern" in str(it).lower()
-                or "samesite=" in str(it).lower() and "none" in str(it).lower()
-                or "missing secure" in str(it).lower()
+        high_cookie_issue = (
+            any(
+                (
+                    "high concern" in str(it).lower()
+                    or "samesite=" in str(it).lower()
+                    and "none" in str(it).lower()
+                    or "missing secure" in str(it).lower()
+                )
+                for it in cookie_issues
             )
-            for it in cookie_issues
-        ) or insecure_cookie
+            or insecure_cookie
+        )
 
         if high_cookie_issue:
-            chains.append({"severity": "HIGH", "text": "Chain: Downgrade (no HSTS) → cookie exposure → session hijack risk."})
+            chains.append(
+                {
+                    "severity": "HIGH",
+                    "text": "Chain: Downgrade (no HSTS) -> cookie exposure -> session hijack risk.",
+                }
+            )
 
     # CSP note: only when CSP is missing
-    csp_missing = "content-security-policy" in (header_check.get("missing_headers") or [])
+    csp_missing = "content-security-policy" in (
+        header_check.get("missing_headers") or []
+    )
     if csp_missing:
-        chains.append({"severity": "INFO", "text": "Missing CSP increases impact of injection/XSS if any vector exists."})
+        chains.append(
+            {
+                "severity": "INFO",
+                "text": "Missing CSP increases impact of injection/XSS if any vector exists.",
+            }
+        )
 
     # Deduplicate while preserving order
     # Deduplicate while preserving order, based on text
@@ -119,6 +143,7 @@ def discover_subdomains(domain: str, timeout: int) -> list[str]:
 
         # Filter results: only allow labels matching ^[a-z0-9.-]+$ and that end with the domain
         import re
+
         valid_re = re.compile(r"^[a-z0-9.-]+$")
         filtered = set()
         for n in results:
@@ -165,10 +190,17 @@ def sanity_check_crt_entries(domain: str, timeout: int) -> None:
 
     cleaned = discover_subdomains(domain, timeout)
     dropped = raw_count - len(cleaned)
-    print(f"crt.sh entries: {raw_count}, kept: {len(cleaned)}, dropped invalid: {dropped}")
+    print(
+        f"crt.sh entries: {raw_count}, kept: {len(cleaned)}, dropped invalid: {dropped}"
+    )
 
 
-def scan_target(domain: str, timeout: int, max_hosts: int | None = None, ca_bundle: str | None = None) -> Dict[str, Any]:
+def scan_target(
+    domain: str,
+    timeout: int,
+    max_hosts: int | None = None,
+    ca_bundle: str | None = None,
+) -> Dict[str, Any]:
     """Discover subdomains and run baseline checks on each host.
 
     Returns a dict with target, timestamp_utc, hosts list, and summary counts.
@@ -208,7 +240,11 @@ def scan_target(domain: str, timeout: int, max_hosts: int | None = None, ca_bund
             entry["http"] = http_info
 
             # Determine whether plain HTTP is reachable via a direct request
-            http_reachable = check_http_reachable(host, timeout, ca_bundle=ca_bundle)
+            http_reachable = check_http_reachable(
+                host,
+                timeout,
+                ca_bundle=ca_bundle,
+            )
             entry["http_reachable"] = http_reachable
 
             headers = http_info.get("response_headers", {}) or {}
@@ -239,8 +275,13 @@ def scan_target(domain: str, timeout: int, max_hosts: int | None = None, ca_bund
                 score -= 5
 
             # any HIGH cookie issue
-            cookie_issues = cookies.get("issues", []) if isinstance(cookies, dict) else []
-            high_cookie = any("high concern" in str(it).lower() or "missing secure" in str(it).lower() for it in cookie_issues)
+            cookie_issues = (
+                cookies.get("issues", []) if isinstance(cookies, dict) else []
+            )
+            high_cookie = any(
+                "high concern" in str(it).lower() or "missing secure" in str(it).lower()
+                for it in cookie_issues
+            )
             if high_cookie:
                 score -= 15
 
@@ -256,11 +297,20 @@ def scan_target(domain: str, timeout: int, max_hosts: int | None = None, ca_bund
                 except Exception:
                     return False
 
-            try_tls = (http_info.get("scheme_used") == "https") or port_443_open(host, timeout)
+            try_tls = (http_info.get("scheme_used") == "https") or port_443_open(
+                host,
+                timeout,
+            )
             if try_tls:
                 tls = get_tls_info(host, timeout, ca_bundle=ca_bundle)
             else:
-                tls = {"enabled": False, "not_after": None, "expired": False, "expires_soon": False, "issuer": None}
+                tls = {
+                    "enabled": False,
+                    "not_after": None,
+                    "expired": False,
+                    "expires_soon": False,
+                    "issuer": None,
+                }
             entry["tls"] = tls
 
             # Risk chains (with severities)
@@ -272,11 +322,16 @@ def scan_target(domain: str, timeout: int, max_hosts: int | None = None, ca_bund
                 missing_hsts_hosts += 1
             if "Content-Security-Policy" in (entry.get("missing_headers") or []):
                 missing_csp_hosts += 1
-
         else:
             entry["header_check"] = {"missing_headers": [], "present": {}}
             entry["cookies"] = {"cookie_count": 0, "issues": [], "details": []}
-            entry["tls"] = {"enabled": False, "not_after": None, "expired": False, "expires_soon": False, "issuer": None}
+            entry["tls"] = {
+                "enabled": False,
+                "not_after": None,
+                "expired": False,
+                "expires_soon": False,
+                "issuer": None,
+            }
             entry["risk_chains"] = []
 
         hosts_results.append(entry)
@@ -289,9 +344,19 @@ def scan_target(domain: str, timeout: int, max_hosts: int | None = None, ca_bund
     }
 
     # average baseline score
-    scores = [h.get("baseline_score", 0) for h in hosts_results if isinstance(h.get("baseline_score"), int)]
+    scores = [
+        h.get("baseline_score", 0)
+        for h in hosts_results
+        if isinstance(h.get("baseline_score"), int)
+    ]
     avg = int(sum(scores) / len(scores)) if scores else 0
     summary["average_baseline_score"] = avg
 
     ca_used = ca_bundle if ca_bundle else certifi.where()
-    return {"target": domain, "timestamp_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z", "hosts": hosts_results, "summary": summary, "ca_bundle_used": ca_used}
+    return {
+        "target": domain,
+        "timestamp_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "hosts": hosts_results,
+        "summary": summary,
+        "ca_bundle_used": ca_used,
+    }
