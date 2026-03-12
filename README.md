@@ -1,9 +1,6 @@
 # SurfaceSnap
 
-SurfaceSnap is a lightweight passive scanner that inspects a host's
-HTTP security headers, TLS certificate metadata, cookies, and basic
-HTTP behavior. It produces a quick security snapshot and generates both
-JSON and HTML reports.
+SurfaceSnap is a lightweight passive scanner that inspects a host's HTTP security headers, TLS certificate metadata, cookies, and basic HTTP behavior. It generates both JSON and HTML reports.
 
 ## Installation
 
@@ -19,9 +16,30 @@ pip install -r requirements.txt
 
 ## Run
 
+Single target:
+
 ```bash
 python main.py scan --target example.com
+```
+
+Targets from file:
+
+```bash
 python main.py scan --targets-file targets.txt
+```
+
+Optional flags:
+
+```bash
+--max-hosts 10
+--timeout 3
+--out out
+--ca-bundle path/to/ca-bundle.pem
+```
+
+Example:
+
+```bash
 python main.py scan --target example.com --max-hosts 5 --timeout 3 --out out
 ```
 
@@ -39,3 +57,5 @@ result.json   structured scan results
 ```bash
 python main.py scan --target github.com
 ```
+
+This scans the host and generates the report files.
