@@ -4,12 +4,12 @@ from typing import Optional
 import truststore
 import typer
 
-# Inject the OS/system trust store into Python's SSL handling early so
-# downstream imports that make HTTPS requests (requests, ssl) will use it.
 truststore.inject_into_ssl()
 
 from report import write_reports
 from scanner import scan_target
+
+VERSION = "1.0.0"
 
 app = typer.Typer(help="SurfaceSnap - baseline security analyzer")
 
@@ -120,7 +120,7 @@ def scan(
 @app.command()
 def version() -> None:
     """Show CLI version."""
-    typer.echo("SurfaceSnap CLI")
+    typer.echo(f"SurfaceSnap {VERSION}")
 
 
 def main() -> None:

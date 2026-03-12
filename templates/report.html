@@ -343,14 +343,14 @@
                       <div class="kv">Issuer: {{ h.tls.issuer if h.tls is defined and h.tls and h.tls.issuer is defined and h.tls.issuer else '-' }}</div>
                       <div class="kv">Expired: {{ h.tls.expired if h.tls is defined and h.tls and h.tls.expired is defined else '-' }}</div>
                       <div class="kv">Expires soon: {{ h.tls.expires_soon if h.tls is defined and h.tls and h.tls.expires_soon is defined else '-' }}</div>
-                      <div class="kv">Not after: {{ h.tls.not_after if h.tls is defined and h.tls and h.tls.not_after is defined and h.tls.not_after else '-' }}</div>
+                      <div class="kv">Certificate expiry: {{ h.tls.not_after if h.tls is defined and h.tls and h.tls.not_after is defined and h.tls.not_after else '-' }}</div>
                       {% set tls_error = h.tls.verification_error if h.tls is defined and h.tls and h.tls.verification_error is defined and h.tls.verification_error else none %}
                       {% if tls_error %}
-                        <div class="kv">TLS verification failed: {{ tls_error }}</div>
+                        <div class="kv">TLS verification result: {{ tls_error }}</div>
                       {% elif h.tls is defined and h.tls and h.tls.present is defined and not h.tls.present %}
                         <div class="kv">TLS metadata unavailable: {{ h.http.https_failed_reason if h.http is defined and h.http and h.http.https_failed_reason is defined and h.http.https_failed_reason else '-' }}</div>
                       {% else %}
-                        <div class="kv">TLS verification failed: -</div>
+                        <div class="kv">TLS verification result: verified</div>
                       {% endif %}
 
                       <div class="detail-label">Full risk chains</div>

@@ -599,8 +599,31 @@ class ReportAndAtomicWriteTests(unittest.TestCase):
         self.assertIn("Status code", html)
         self.assertIn("TLS result", html)
         self.assertIn("Cookie findings by severity", html)
-        self.assertIn("TLS verification failed", html)
+        self.assertIn("TLS verification result", html)
         self.assertIn("TLS metadata unavailable", html)
+
+
+class ReadmeAndCliAlignmentTests(unittest.TestCase):
+    def test_readme_matches_release_shape(self):
+        readme_path = os.path.join(os.path.dirname(__file__), "..", "README.md")
+        with open(readme_path, "r", encoding="utf-8") as file_handle:
+            readme = file_handle.read()
+
+        self.assertIn(
+            "git clone https://github.com/heshes1/surfacesnap",
+            readme,
+        )
+        self.assertIn("python main.py scan --target example.com", readme)
+        self.assertIn("python main.py scan --targets-file targets.txt", readme)
+        self.assertIn(
+            "python main.py scan --target example.com --max-hosts 5 --timeout 3 --out out",
+            readme,
+        )
+        self.assertIn("report.html   human-readable scan report", readme)
+        self.assertIn("result.json   structured scan results", readme)
+        self.assertNotIn("## Features", readme)
+        self.assertNotIn("## Options", readme)
+        self.assertNotIn("## About", readme)
 
 
 if __name__ == "__main__":
