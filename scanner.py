@@ -1,10 +1,12 @@
+import re
+import socket
+from datetime import datetime, timezone
+from typing import Any, Dict, List
+from urllib.parse import urlparse
+
 import certifi
 import dns.resolver
 import requests
-import socket
-from datetime import datetime
-from typing import Any, Dict, List
-from urllib.parse import urlparse
 
 from checks import (
     analyze_cookies,
@@ -17,25 +19,99 @@ from checks import (
 
 
 def extract_hostname(target: str) -> str:
+    """Return the hostname portion of a user-supplied target."""
     if "://" in target:
         parsed = urlparse(target)
         return parsed.hostname or target
     return target
 
 
+def normalize_target(target: str) -> str:
+    """Normalize user input into a lowercase hostname."""
+    if not isinstance(target, str):
+        raise ValueError("Target must be a string.")
+
+    raw = target.strip()
+    if not raw:
+        raise ValueError("Target must not be empty.")
+
+    parsed = urlparse(raw if "://" in raw else f"//{raw}")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError(f"Invalid target: {target}")
+
+    normalized = hostname.rstrip(".").lower()
+    if not normalized:
+        raise ValueError(f"Invalid target: {target}")
+
+    if not re.fullmatch(r"[a-z0-9.-]+", normalized):
+        raise ValueError(f"Invalid target: {target}")
+
+    if ".." in normalized:
+        raise ValueError(f"Invalid target: {target}")
+
+    return normalized
+
+
 def scan(target):
     """Backward-compatible simple scan wrapper using default timeout."""
-    return scan_target(target, timeout=5)
+    host = normalize_target(target)
+    return scan_target(host, timeout=5)
+
+
+def calculate_baseline_score(
+    missing_headers: List[str],
+    cookie_findings: List[Dict[str, str]],
+    tls: Dict[str, Any],
+    scheme_used: str | None,
+) -> int:
+    """Convert collected findings into the heuristic score shown in reports."""
+    score = 100
+    missing = set(missing_headers or [])
+
+    # Missing baseline headers drive most of the heuristic score.
+    if "Strict-Transport-Security" in missing:
+        score -= 30
+    if "Content-Security-Policy" in missing:
+        score -= 20
+    if "X-Frame-Options" in missing:
+        score -= 10
+    if "X-Content-Type-Options" in missing:
+        score -= 10
+    if "Referrer-Policy" in missing:
+        score -= 5
+    if "Permissions-Policy" in missing:
+        score -= 5
+
+    # Warning-only cookie findings stay visible without dominating the score.
+    if any(f.get("severity") == "high_risk" for f in cookie_findings):
+        score -= 10
+
+    failure_type = tls.get("failure_type")
+    # TLS failures should outweigh low-confidence HTTP hygiene findings.
+    if tls.get("expired"):
+        score -= 35
+    elif failure_type == "self_signed":
+        score -= 30
+    elif failure_type == "hostname_mismatch":
+        score -= 30
+    elif failure_type == "untrusted":
+        score -= 25
+    elif tls.get("verification_error"):
+        score -= 25
+    elif scheme_used == "https" and not tls.get("present", False):
+        score -= 15
+
+    if tls.get("expires_soon"):
+        score -= 5
+
+    return max(0, min(100, score))
 
 
 def build_risk_chains(result: Dict[str, Any]) -> List[str]:
-    """Build simple risk chains from a per-host `result` dict.
-
-    Returns a deduplicated list of human-readable risk chain descriptions.
-    """
+    """Build short, human-readable chains that connect related weak signals."""
     chains: List[Dict[str, str]] = []
 
-    http_info = result.get("http") or {}
     header_check = result.get("header_check") or {}
     cookies = result.get("cookies") or {}
 
@@ -44,7 +120,7 @@ def build_risk_chains(result: Dict[str, Any]) -> List[str]:
         header_check.get("missing_headers") or []
     )
 
-    # Downgrade risk: only when plain HTTP is reachable and HSTS is missing
+    # Plain HTTP plus missing HSTS suggests downgrade exposure.
     downgrade_risk = http_reachable and hsts_missing
     if downgrade_risk:
         chains.append(
@@ -54,21 +130,12 @@ def build_risk_chains(result: Dict[str, Any]) -> List[str]:
             }
         )
 
-        # Check for high-severity cookie issues indicating exposure
-        cookie_issues = cookies.get("issues", []) if isinstance(cookies, dict) else []
-        cookie_details = cookies.get("details", []) if isinstance(cookies, dict) else []
-        insecure_cookie = any(not d.get("secure", False) for d in cookie_details)
-        high_cookie_issue = (
-            any(
-                (
-                    "high concern" in str(it).lower()
-                    or "samesite=" in str(it).lower()
-                    and "none" in str(it).lower()
-                    or "missing secure" in str(it).lower()
-                )
-                for it in cookie_issues
-            )
-            or insecure_cookie
+        # High-risk cookie findings make downgrade chains more meaningful.
+        cookie_findings = (
+            cookies.get("findings", []) if isinstance(cookies, dict) else []
+        )
+        high_cookie_issue = any(
+            finding.get("severity") == "high_risk" for finding in cookie_findings
         )
 
         if high_cookie_issue:
@@ -79,8 +146,8 @@ def build_risk_chains(result: Dict[str, Any]) -> List[str]:
                 }
             )
 
-    # CSP note: only when CSP is missing
-    csp_missing = "content-security-policy" in (
+    # Missing CSP still matters even without a proven injection vector.
+    csp_missing = "Content-Security-Policy" in (
         header_check.get("missing_headers") or []
     )
     if csp_missing:
@@ -91,8 +158,7 @@ def build_risk_chains(result: Dict[str, Any]) -> List[str]:
             }
         )
 
-    # Deduplicate while preserving order
-    # Deduplicate while preserving order, based on text
+    # Preserve the first occurrence of each chain so the report stays concise.
     seen = set()
     dedup: List[Dict[str, str]] = []
     for c in chains:
@@ -104,17 +170,12 @@ def build_risk_chains(result: Dict[str, Any]) -> List[str]:
 
 
 def discover_subdomains(domain: str, timeout: int) -> list[str]:
-    """
-    Discover subdomains for `domain` by querying crt.sh.
+    """Query crt.sh and return normalized subdomains for a target."""
+    if "://" in domain:
+        domain = normalize_target(domain)
 
-    - Queries: https://crt.sh/?q=%25.<domain>&output=json
-    - Parses `name_value` fields, splits multiline entries
-    - Normalizes (lowercase, strip, remove leading "*.")
-    - Deduplicates and always includes the root domain
-
-    Returns a sorted list of domains. On any error, returns [domain].
-    """
-    url = f"https://crt.sh/?q=%25.{domain}&output=json"
+    normalized_domain = normalize_target(domain)
+    url = f"https://crt.sh/?q=%25.{normalized_domain}&output=json"
     try:
         resp = requests.get(url, timeout=timeout)
         if resp.status_code != 200:
@@ -125,41 +186,35 @@ def discover_subdomains(domain: str, timeout: int) -> list[str]:
             return [domain]
 
         results = set()
-        # Expecting a list of objects with "name_value"
         if isinstance(data, list):
             for item in data:
                 nv = item.get("name_value") if isinstance(item, dict) else None
                 if not nv:
                     continue
-                # name_value can contain multiple names separated by newlines
                 for name in str(nv).splitlines():
                     n = name.strip().lower()
                     if not n:
                         continue
-                    # Remove leading wildcard
                     if n.startswith("*."):
                         n = n[2:]
                     results.add(n)
 
-        # Filter results: only allow labels matching ^[a-z0-9.-]+$ and that end with the domain
         import re
 
         valid_re = re.compile(r"^[a-z0-9.-]+$")
         filtered = set()
         for n in results:
-            # reject entries with spaces or invalid chars
             if not valid_re.match(n):
                 continue
-            # keep only names that are exactly the domain or end with .domain
-            if n == domain.lower() or n.endswith("." + domain.lower()):
+            if n == normalized_domain or n.endswith("." + normalized_domain):
                 filtered.add(n)
 
-        # Always include the root domain
-        filtered.add(domain.lower())
+        # Keep the root host even if crt.sh returns only subdomains.
+        filtered.add(normalized_domain)
 
         return sorted(filtered)
     except Exception:
-        return [domain]
+        return [normalized_domain]
 
 
 def sanity_check_crt_entries(domain: str, timeout: int) -> None:
@@ -201,11 +256,21 @@ def scan_target(
     max_hosts: int | None = None,
     ca_bundle: str | None = None,
 ) -> Dict[str, Any]:
-    """Discover subdomains and run baseline checks on each host.
+    """Run passive checks for a target and its selected hosts."""
+    input_target = domain
+    normalized_target = normalize_target(domain)
 
-    Returns a dict with target, timestamp_utc, hosts list, and summary counts.
-    """
-    hosts_list = discover_subdomains(domain, timeout)
+    if max_hosts == 1:
+        hosts_list = [normalized_target]
+    else:
+        hosts_list = discover_subdomains(normalized_target, timeout)
+        if normalized_target in hosts_list:
+            hosts_list = [normalized_target] + [
+                host for host in hosts_list if host != normalized_target
+            ]
+        else:
+            hosts_list = [normalized_target] + hosts_list
+
     if max_hosts is not None and isinstance(max_hosts, int) and max_hosts > 0:
         hosts_list = hosts_list[:max_hosts]
     hosts_results: List[Dict[str, Any]] = []
@@ -218,16 +283,16 @@ def scan_target(
     for host in hosts_list:
         entry: Dict[str, Any] = {"host": host}
 
-        # Ensure `http` is always a dict for schema consistency
+        # Keep a stable schema even when later network steps fail.
         entry["http"] = {
             "scheme_used": None,
             "status_code": None,
             "final_url": None,
+            "redirect_count": 0,
             "response_headers": {},
             "https_failed_reason": None,
         }
 
-        # DNS resolution
         host_for_dns = extract_hostname(host)
         res = resolve_host(host_for_dns, timeout)
         entry["resolve"] = res
@@ -235,11 +300,10 @@ def scan_target(
         if res.get("resolved"):
             resolved_hosts += 1
 
-            # HTTP info and headers
             http_info = fetch_http_info(host, timeout, ca_bundle=ca_bundle)
             entry["http"] = http_info
 
-            # Determine whether plain HTTP is reachable via a direct request
+            # Track plain HTTP separately for downgrade-style risk chains.
             http_reachable = check_http_reachable(
                 host,
                 timeout,
@@ -250,46 +314,15 @@ def scan_target(
             headers = http_info.get("response_headers", {}) or {}
             header_check = baseline_header_check(headers)
             entry["header_check"] = header_check
-            # expose missing headers and present map at top level for convenience
             entry["missing_headers"] = header_check.get("missing_headers", [])
             entry["headers_present"] = header_check.get("present", {})
 
-            # Cookies analysis
-            cookies = analyze_cookies(headers)
+            cookies = analyze_cookies(
+                headers,
+                https_used=http_info.get("scheme_used") == "https",
+            )
             entry["cookies"] = cookies
 
-            # Baseline score calculation
-            score = 100
-            missing = set(entry.get("missing_headers") or [])
-            if "Strict-Transport-Security" in missing:
-                score -= 30
-            if "Content-Security-Policy" in missing:
-                score -= 20
-            if "X-Frame-Options" in missing:
-                score -= 10
-            if "X-Content-Type-Options" in missing:
-                score -= 10
-            if "Referrer-Policy" in missing:
-                score -= 5
-            if "Permissions-Policy" in missing:
-                score -= 5
-
-            # any HIGH cookie issue
-            cookie_issues = (
-                cookies.get("issues", []) if isinstance(cookies, dict) else []
-            )
-            high_cookie = any(
-                "high concern" in str(it).lower() or "missing secure" in str(it).lower()
-                for it in cookie_issues
-            )
-            if high_cookie:
-                score -= 15
-
-            # Clamp
-            score = max(0, min(100, score))
-            entry["baseline_score"] = score
-
-            # TLS info: collect when HTTPS was used, or when port 443 appears reachable
             def port_443_open(h: str, to: int) -> bool:
                 try:
                     with socket.create_connection((h, 443), timeout=to):
@@ -305,32 +338,50 @@ def scan_target(
                 tls = get_tls_info(host, timeout, ca_bundle=ca_bundle)
             else:
                 tls = {
-                    "enabled": False,
+                    "present": False,
                     "not_after": None,
                     "expired": False,
                     "expires_soon": False,
                     "issuer": None,
+                    "verification_error": None,
+                    "failure_type": None,
                 }
             entry["tls"] = tls
 
-            # Risk chains (with severities)
+            cookie_findings = (
+                cookies.get("findings", []) if isinstance(cookies, dict) else []
+            )
+            score = calculate_baseline_score(
+                entry.get("missing_headers") or [],
+                cookie_findings,
+                tls,
+                http_info.get("scheme_used"),
+            )
+            entry["baseline_score"] = score
+
             chains = build_risk_chains(entry)
             entry["risk_chains"] = chains
 
-            # Summary counters
             if "Strict-Transport-Security" in (entry.get("missing_headers") or []):
                 missing_hsts_hosts += 1
             if "Content-Security-Policy" in (entry.get("missing_headers") or []):
                 missing_csp_hosts += 1
         else:
             entry["header_check"] = {"missing_headers": [], "present": {}}
-            entry["cookies"] = {"cookie_count": 0, "issues": [], "details": []}
+            entry["cookies"] = {
+                "cookie_count": 0,
+                "issues": [],
+                "findings": [],
+                "details": [],
+            }
             entry["tls"] = {
-                "enabled": False,
+                "present": False,
                 "not_after": None,
                 "expired": False,
                 "expires_soon": False,
                 "issuer": None,
+                "verification_error": None,
+                "failure_type": None,
             }
             entry["risk_chains"] = []
 
@@ -343,7 +394,6 @@ def scan_target(
         "missing_csp_hosts": missing_csp_hosts,
     }
 
-    # average baseline score
     scores = [
         h.get("baseline_score", 0)
         for h in hosts_results
@@ -354,8 +404,9 @@ def scan_target(
 
     ca_used = ca_bundle if ca_bundle else certifi.where()
     return {
-        "target": domain,
-        "timestamp_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "input_target": input_target,
+        "target": normalized_target,
+        "timestamp_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "hosts": hosts_results,
         "summary": summary,
         "ca_bundle_used": ca_used,

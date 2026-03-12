@@ -1,6 +1,6 @@
-requests
-dnspython
-jinja2
-certifi
-truststore
-typer
+requests==2.32.5
+dnspython==2.8.0
+jinja2==3.1.6
+certifi==2026.02.25
+truststore==0.10.4
+typer==0.24.1

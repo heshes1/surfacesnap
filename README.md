@@ -1,76 +1,61 @@
 # SurfaceSnap
 
-SurfaceSnap is a small Python tool for checking the external security surface of a domain.
-
-It discovers subdomains using Certificate Transparency logs and runs a set of basic checks such as DNS resolution, HTTP headers, cookies, and TLS certificate information. Results are written to JSON and an HTML report.
-
-## Features
-
-For each target, SurfaceSnap:
-
-- Discovers subdomains using crt.sh
-- Resolves DNS records (A and AAAA)
-- Attempts HTTPS first, then falls back to HTTP if needed
-- Collects selected HTTP response headers
-- Checks common security headers:
-  - Strict-Transport-Security
-  - Content-Security-Policy
-  - X-Frame-Options
-  - X-Content-Type-Options
-  - Referrer-Policy
-  - Permissions-Policy
-- Analyzes cookies (Secure, HttpOnly, SameSite)
-- Inspects TLS certificate metadata
-- Builds simple risk chain indicators
-- Calculates a baseline security score
-- Generates JSON and HTML reports
+SurfaceSnap is a lightweight passive scanner that inspects a host's
+HTTP security headers, TLS certificate metadata, cookies, and basic
+HTTP behavior. It generates both JSON and HTML reports.
 
 ## Installation
 
-Create a virtual environment:
+```bash
+git clone https://github.com/<your-user>/surfacesnap
+cd surfacesnap
 
-python -m venv venv
-
-Activate it.
-
-Linux / macOS
-
-source venv/bin/activate
-
-Windows
-
-venv\Scripts\activate
-
-Install dependencies:
-
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
+```
 
-## Usage
+## Run
 
-Scan a single target:
+Single target:
 
-python main.py scan --target example.com --out out
+```bash
+python main.py scan --target example.com
+```
 
-Scan multiple targets:
+Targets from file:
 
-python main.py scan --targets-file targets.txt --out out
+```bash
+python main.py scan --targets-file targets.txt
+```
 
-Example `targets.txt`:
+Optional flags:
 
-https://example.com
-https://example.org
+```bash
+--max-hosts 10
+--timeout 3
+--out out
+```
 
-## Options
+Example:
 
---timeout      Network timeout in seconds (default: 5)  
---max-hosts    Limit number of hosts discovered (0 = unlimited)  
---ca-bundle    Path to a custom CA bundle for HTTPS verification  
+```bash
+python main.py scan --target example.com --max-hosts 5 --timeout 3
+```
 
 ## Output
 
-The scan writes two files to the output directory:
+The scan creates two files in the output directory:
 
-report.html  
-result.json  
+```text
+report.html   human-readable scan report
+result.json   structured scan results
+```
 
-The HTML report shows discovered hosts, missing security headers, cookie issues, TLS information, and baseline scores.
+## Example
+
+```bash
+python main.py scan --target github.com
+```
+
+This scans the host and generates the report files.

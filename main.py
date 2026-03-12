@@ -8,7 +8,6 @@ import typer
 # downstream imports that make HTTPS requests (requests, ssl) will use it.
 truststore.inject_into_ssl()
 
-from checks import run_checks
 from report import write_reports
 from scanner import scan_target
 
