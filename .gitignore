@@ -7,6 +7,15 @@ dist/
 build/
 .venv/
 venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+pip-wheel-metadata/
+*.egg
 
 # Generated scan outputs
 
@@ -19,3 +28,8 @@ example_report/
 *.json
 *.html
 !templates/report.html
+
+# Editors
+
+.idea/
+.vscode/

@@ -1,204 +1,62 @@
 # SurfaceSnap
 
-SurfaceSnap is a Python based, non intrusive security surface analyzer.
-
-It performs passive discovery and baseline security posture checks, generating structured JSON and HTML reports. It is designed for authorized security testing and asset visibility. It does not perform exploitation.
-
-## Features
-
-For each target, SurfaceSnap:
-
-- Discovers subdomains via Certificate Transparency (crt.sh)
-    
-- Performs DNS resolution (A / AAAA)
-    
-- Attempts HTTPS first
-    
-- Collects HTTP response headers
-    
-- Evaluates baseline security headers:
-    
-    - `Strict-Transport-Security`
-        
-    - `Content-Security-Policy`
-        
-    - `X-Frame-Options`
-        
-    - `X-Content-Type-Options`
-        
-    - `Referrer-Policy`
-        
-    - `Permissions-Policy`
-        
-- Analyzes cookies (`Secure`, `HttpOnly`, `SameSite`)
-    
-- Inspects TLS certificate metadata (if HTTPS succeeds)
-    
-- Builds simple risk chains
-    
-- Calculates a `baseline_score` (0–100)
-    
-
-All checks are non-intrusive.
-
-## Target Input
-
-You may provide:
-
-- `example.com`
-    
-- `http://example.com`
-    
-- `https://example.com`
-    
-- `https://example.com/some/path`
-    
-
-DNS resolution is performed against the extracted hostname.
+SurfaceSnap is a lightweight passive scanner that inspects a host's
+HTTP security headers, TLS certificate metadata, cookies, and basic
+HTTP behavior. It generates both JSON and HTML reports.
 
 ## Installation
 
 ```bash
-python -m venv venv
+git clone https://github.com/<your-user>/surfacesnap
+cd surfacesnap
 
-# Linux/macOS
-source venv/bin/activate
-
-# Windows
-venv\Scripts\activate
+python -m venv .venv
+.venv\Scripts\activate
 
 pip install -r requirements.txt
 ```
 
-### Dependencies
+## Run
 
-- requests
-    
-- dnspython
-    
-- jinja2
-    
-- certifi
-    
-- truststore
-    
-- typer
-
-## Usage
-
-SurfaceSnap uses a Typer-based CLI.
-
-### Scan a Single Target
+Single target:
 
 ```bash
-python main.py scan --target example.com --out out
+python main.py scan --target example.com
 ```
 
-### Scan Multiple Targets
+Targets from file:
 
 ```bash
-python main.py scan --targets-file targets.txt --out out
+python main.py scan --targets-file targets.txt
 ```
 
-Example `targets.txt`:
-
-```
-https://example.com
-https://example.org
-```
-
----
-
-### Optional Parameters
+Optional flags:
 
 ```bash
-python main.py scan \
-  --target example.com \
-  --timeout 5 \
-  --max-hosts 10 \
-  --ca-bundle /path/to/ca.pem
+--max-hosts 10
+--timeout 3
+--out out
 ```
 
-Options:
+Example:
 
-- `--timeout` (default: 5)
-    
-- `--max-hosts` (0 = unlimited)
-    
-- `--ca-bundle` custom PEM file (otherwise certifi is used)
+```bash
+python main.py scan --target example.com --max-hosts 5 --timeout 3
+```
 
 ## Output
 
-Two files are generated in the output directory:
+The scan creates two files in the output directory:
 
-- `report.html`
-    
-- `result.json`
-    
+```text
+report.html   human-readable scan report
+result.json   structured scan results
+```
 
-### JSON Structure
+## Example
 
-- `target`
-    
-- `timestamp_utc`
-    
-- `hosts[]`
-    
-    - `http`
-        
-    - `resolve`
-        
-    - `http_reachable`
-        
-    - `header_check`
-        
-    - `missing_headers`
-        
-    - `headers_present`
-        
-    - `cookies`
-        
-    - `baseline_score`
-        
-    - `tls`
-        
-    - `risk_chains`
-        
-- `summary`
-    
-- `ca_bundle_used`
+```bash
+python main.py scan --target github.com
+```
 
-## HTTPS & TLS Behavior
-
-- HTTPS is attempted first.
-    
-- If HTTPS negotiation succeeds, TLS metadata is collected.
-    
-- If HTTPS fails, TLS fields remain disabled.
-    
-- DNS resolution failures prevent HTTP checks.
-  
-## Scoring
-
-Each resolved host receives a `baseline_score` between 0 and 100.
-
-Score reductions occur due to:
-
-- Missing security headers
-    
-- Cookie security issues
-    
-- Certain downgrade scenarios (e.g., missing HSTS)
-    
-
-Example scores:
-
-- `example.com` → 20
-    
-- `juice-shop.herokuapp.com` → 40
-
-## Legal Use
-
-SurfaceSnap performs passive checks only (DNS, TLS inspection, HTTP headers).
-
-Use only against systems you own or are explicitly authorized to test.
+This scans the host and generates the report files.

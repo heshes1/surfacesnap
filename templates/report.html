@@ -9,22 +9,22 @@
     <title>SurfaceSnap Report{% if target_value %} - {{ target_value }}{% endif %}</title>
     <style>
       :root {
-        --bg: #F7FAFF;
-        --primary: #1D4ED8;
-        --text: #0F172A;
+        --bg: #f7faff;
+        --primary: #1d4ed8;
+        --text: #0f172a;
         --muted: #475569;
-        --border: #E2E8F0;
-        --card: #FFFFFF;
-        --critical-bg: #FEE2E2;
-        --critical-fg: #B91C1C;
-        --high-bg: #FECACA;
-        --high-fg: #991B1B;
-        --medium-bg: #FEF3C7;
-        --medium-fg: #92400E;
-        --low-bg: #E2E8F0;
+        --border: #e2e8f0;
+        --card: #ffffff;
+        --critical-bg: #fee2e2;
+        --critical-fg: #b91c1c;
+        --high-bg: #fecaca;
+        --high-fg: #991b1b;
+        --medium-bg: #fef3c7;
+        --medium-fg: #92400e;
+        --low-bg: #e2e8f0;
         --low-fg: #334155;
-        --info-bg: #DBEAFE;
-        --info-fg: #1E40AF;
+        --info-bg: #dbeafe;
+        --info-fg: #1e40af;
       }
       * {
         box-sizing: border-box;
@@ -92,7 +92,7 @@
       thead th {
         position: sticky;
         top: 0;
-        background: #EFF6FF;
+        background: #eff6ff;
         color: var(--text);
         border-bottom: 1px solid var(--border);
         border-top: 1px solid var(--border);
@@ -106,10 +106,10 @@
         border-bottom: 1px solid var(--border);
       }
       tbody tr:nth-child(odd) td {
-        background: #FCFDFF;
+        background: #fcfdff;
       }
       tbody tr:hover td {
-        background: #EFF6FF;
+        background: #eff6ff;
       }
       .muted {
         color: var(--muted);
@@ -128,7 +128,7 @@
         border-radius: 999px;
         font-size: 0.78rem;
         border: 1px solid var(--border);
-        background: #F8FAFC;
+        background: #f8fafc;
         color: var(--muted);
       }
       .badge {
@@ -166,7 +166,7 @@
       details {
         border: 1px solid var(--border);
         border-radius: 10px;
-        background: #FAFCFF;
+        background: #fafcff;
         margin-bottom: 10px;
       }
       details summary {
@@ -219,7 +219,7 @@
       <div class="panel header">
         <h1>SurfaceSnap Report</h1>
         <div class="subhead">
-          {% if target_value %}<strong>Target:</strong> {{ target_value }}{% else %}<strong>Target:</strong> —{% endif %}
+          {% if target_value %}<strong>Target:</strong> {{ target_value }}{% else %}<strong>Target:</strong> -{% endif %}
           {% if timestamp_value %}<span class="muted"> | {{ timestamp_value }}</span>{% endif %}
         </div>
         <div class="summary-grid">
@@ -250,10 +250,11 @@
             <thead>
               <tr>
                 <th>Host</th>
-                <th>Scheme</th>
-                <th>HTTP reachable</th>
+                <th>Final scheme</th>
+                <th>Status code</th>
+                <th>TLS result</th>
                 <th>Missing headers</th>
-                <th>Score</th>
+                <th>Heuristic Score</th>
                 <th>Risks</th>
               </tr>
             </thead>
@@ -261,11 +262,21 @@
             {% for h in hosts %}
               {% set missing_headers = h.missing_headers | default([], true) %}
               {% set risk_chains = h.risk_chains | default([], true) %}
-              {% set cookie_issues = h.cookies.issues if h.cookies is defined and h.cookies and h.cookies.issues is defined else [] %}
+              {% set cookie_findings = h.cookies.findings if h.cookies is defined and h.cookies and h.cookies.findings is defined else [] %}
+              {% set tls_failure = h.tls.failure_type if h.tls is defined and h.tls and h.tls.failure_type is defined and h.tls.failure_type else none %}
               <tr>
-                <td>{{ h.host | default('—', true) }}</td>
-                <td>{{ h.http.scheme_used if h.http is defined and h.http and h.http.scheme_used is defined and h.http.scheme_used else '—' }}</td>
-                <td class="center">{% if h.http_reachable is defined %}{% if h.http_reachable %}Yes{% else %}No{% endif %}{% else %}—{% endif %}</td>
+                <td>{{ h.host | default('-', true) }}</td>
+                <td>{{ h.http.scheme_used if h.http is defined and h.http and h.http.scheme_used is defined and h.http.scheme_used else '-' }}</td>
+                <td>{{ h.http.status_code if h.http is defined and h.http and h.http.status_code is defined and h.http.status_code is not none else '-' }}</td>
+                <td>
+                  {% if tls_failure %}
+                    <span class="badge {% if tls_failure == 'expired' or tls_failure == 'self_signed' or tls_failure == 'hostname_mismatch' or tls_failure == 'untrusted' or tls_failure == 'protocol_failure' %}sev-high{% else %}sev-medium{% endif %}">{{ tls_failure | replace('_', ' ') | upper }}</span>
+                  {% elif h.tls is defined and h.tls and h.tls.present is defined and h.tls.present %}
+                    <span class="badge sev-info">VERIFIED</span>
+                  {% else %}
+                    <span class="badge sev-low">UNAVAILABLE</span>
+                  {% endif %}
+                </td>
                 <td>
                   {% if missing_headers | length > 0 %}
                     <div><strong>{{ missing_headers | length }}</strong></div>
@@ -275,10 +286,10 @@
                       {% endfor %}
                     </div>
                   {% else %}
-                    —
+                    &mdash;
                   {% endif %}
                 </td>
-                <td>{{ h.baseline_score if h.baseline_score is defined and h.baseline_score is not none else '—' }}</td>
+                <td>{{ h.baseline_score if h.baseline_score is defined and h.baseline_score is not none else '-' }}</td>
                 <td>
                   {% if risk_chains | length > 0 %}
                     <div class="chip-row">
@@ -288,14 +299,14 @@
                       {% endfor %}
                     </div>
                   {% else %}
-                    —
+                    &mdash;
                   {% endif %}
                 </td>
               </tr>
               <tr>
-                <td colspan="6" class="details-cell">
+                <td colspan="7" class="details-cell">
                   <details>
-                    <summary>Details for {{ h.host | default('—', true) }}</summary>
+                    <summary>Details for {{ h.host | default('-', true) }}</summary>
                     <div class="detail-body">
                       <div class="detail-label">Missing headers</div>
                       {% if missing_headers | length > 0 %}
@@ -305,24 +316,42 @@
                           {% endfor %}
                         </div>
                       {% else %}
-                        <div class="kv">—</div>
+                        <div class="kv">&mdash;</div>
                       {% endif %}
 
-                      <div class="detail-label">Cookie issues</div>
-                      {% if cookie_issues | length > 0 %}
+                      <div class="detail-label">HTTP info</div>
+                      <div class="kv">HTTP status code: {{ h.http.status_code if h.http is defined and h.http and h.http.status_code is defined and h.http.status_code is not none else '-' }}</div>
+                      <div class="kv">Final URL: {{ h.http.final_url if h.http is defined and h.http and h.http.final_url is defined and h.http.final_url else '-' }}</div>
+                      <div class="kv">Redirect count: {{ h.http.redirect_count if h.http is defined and h.http and h.http.redirect_count is defined else '-' }}</div>
+
+                      <div class="detail-label">Cookie findings by severity</div>
+                      {% if cookie_findings | length > 0 %}
                         <ul>
-                          {% for issue in cookie_issues %}
-                            <li>{{ issue }}</li>
+                          {% for finding in cookie_findings %}
+                            {% set sev = finding.severity | default('info', true) | upper %}
+                            <li>
+                              <span class="badge {% if sev == 'HIGH_RISK' %}sev-high{% elif sev == 'WARNING' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
+                              {{ finding.message }}
+                            </li>
                           {% endfor %}
                         </ul>
                       {% else %}
-                        <div class="kv">—</div>
+                        <div class="kv">&mdash;</div>
                       {% endif %}
 
                       <div class="detail-label">TLS info</div>
-                      <div class="kv">Expired: {{ h.tls.expired if h.tls is defined and h.tls and h.tls.expired is defined else '—' }}</div>
-                      <div class="kv">Expires soon: {{ h.tls.expires_soon if h.tls is defined and h.tls and h.tls.expires_soon is defined else '—' }}</div>
-                      <div class="kv">Not after: {{ h.tls.not_after if h.tls is defined and h.tls and h.tls.not_after is defined and h.tls.not_after else '—' }}</div>
+                      <div class="kv">Issuer: {{ h.tls.issuer if h.tls is defined and h.tls and h.tls.issuer is defined and h.tls.issuer else '-' }}</div>
+                      <div class="kv">Expired: {{ h.tls.expired if h.tls is defined and h.tls and h.tls.expired is defined else '-' }}</div>
+                      <div class="kv">Expires soon: {{ h.tls.expires_soon if h.tls is defined and h.tls and h.tls.expires_soon is defined else '-' }}</div>
+                      <div class="kv">Not after: {{ h.tls.not_after if h.tls is defined and h.tls and h.tls.not_after is defined and h.tls.not_after else '-' }}</div>
+                      {% set tls_error = h.tls.verification_error if h.tls is defined and h.tls and h.tls.verification_error is defined and h.tls.verification_error else none %}
+                      {% if tls_error %}
+                        <div class="kv">TLS verification failed: {{ tls_error }}</div>
+                      {% elif h.tls is defined and h.tls and h.tls.present is defined and not h.tls.present %}
+                        <div class="kv">TLS metadata unavailable: {{ h.http.https_failed_reason if h.http is defined and h.http and h.http.https_failed_reason is defined and h.http.https_failed_reason else '-' }}</div>
+                      {% else %}
+                        <div class="kv">TLS verification failed: -</div>
+                      {% endif %}
 
                       <div class="detail-label">Full risk chains</div>
                       {% if risk_chains | length > 0 %}
@@ -331,12 +360,12 @@
                             {% set sev = c.severity | default('INFO', true) | upper %}
                             <li>
                               <span class="badge {% if sev == 'CRITICAL' %}sev-critical{% elif sev == 'HIGH' %}sev-high{% elif sev == 'MEDIUM' %}sev-medium{% elif sev == 'LOW' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
-                              {{ c.text | default('—', true) }}
+                              {{ c.text | default('-', true) }}
                             </li>
                           {% endfor %}
                         </ul>
                       {% else %}
-                        <div class="kv">—</div>
+                        <div class="kv">&mdash;</div>
                       {% endif %}
                     </div>
                   </details>
