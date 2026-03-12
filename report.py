@@ -18,7 +18,9 @@ def write_json(result: Dict[str, Any], out_dir: str) -> str:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, default=str)
     except OSError as exc:
-        raise ReportWriteError(f"Failed to write JSON report to {path}: {exc}") from exc
+        raise ReportWriteError(
+            f"Failed to write JSON report to {path}: {exc}"
+        ) from exc
     return path
 
 
@@ -64,7 +66,9 @@ def write_html(result: Dict[str, Any], out_dir: str) -> str:
         os.makedirs(out_dir, exist_ok=True)
         _write_html_to_path(result, out_path)
     except OSError as exc:
-        raise ReportWriteError(f"Failed to write HTML report to {out_path}: {exc}") from exc
+        raise ReportWriteError(
+            f"Failed to write HTML report to {out_path}: {exc}"
+        ) from exc
     return out_path
 
 

@@ -21,10 +21,10 @@ def _scan_one_target(
     max_hosts: int,
     ca_bundle: Optional[str],
 ) -> None:
-    # Ensure output directory exists
+    # Ensure the report directory exists before writing files.
     os.makedirs(out_dir, exist_ok=True)
 
-    # Run scan with provided timeout, optional host cap and optional custom CA bundle
+    # Pass through the host cap only when the user set a positive limit.
     max_hosts_value = max_hosts if max_hosts and max_hosts > 0 else None
     result = scan_target(
         target,
@@ -33,10 +33,10 @@ def _scan_one_target(
         ca_bundle=ca_bundle,
     )
 
-    # Write reports (HTML + JSON)
+    # Write both report formats for the same scan result.
     html_path, json_path = write_reports(result, out_dir)
 
-    # Concise summary from result
+    # Print a short summary after each target finishes.
     summary = result.get("summary", {})
     print(
         f"Scanned: {summary.get('total_hosts', 0)} host(s); "
@@ -47,6 +47,7 @@ def _scan_one_target(
 
 
 def _load_targets(target: Optional[str], targets_file: Optional[str]) -> list[str]:
+    """Load explicit and file-based targets, then remove duplicates."""
     targets: list[str] = []
 
     if target:

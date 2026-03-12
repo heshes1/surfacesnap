@@ -120,7 +120,11 @@ def resolve_host(host: str, timeout: int) -> Dict[str, Any]:
     except Exception:
         return {"host": host, "resolved": False, "ips": []}
 
-    return {"host": host, "resolved": len(ips) > 0, "ips": ips}
+    return {
+        "host": host,
+        "resolved": len(ips) > 0,
+        "ips": ips,
+    }
 
 
 def fetch_http_info(

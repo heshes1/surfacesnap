@@ -53,7 +53,7 @@ def normalize_target(target: str) -> str:
     return normalized
 
 
-def scan(target):
+def scan(target: str):
     """Backward-compatible simple scan wrapper using default timeout."""
     host = normalize_target(target)
     return scan_target(host, timeout=5)
@@ -304,11 +304,7 @@ def scan_target(
             entry["http"] = http_info
 
             # Track plain HTTP separately for downgrade-style risk chains.
-            http_reachable = check_http_reachable(
-                host,
-                timeout,
-                ca_bundle=ca_bundle,
-            )
+            http_reachable = check_http_reachable(host, timeout, ca_bundle=ca_bundle)
             entry["http_reachable"] = http_reachable
 
             headers = http_info.get("response_headers", {}) or {}
@@ -349,7 +345,9 @@ def scan_target(
             entry["tls"] = tls
 
             cookie_findings = (
-                cookies.get("findings", []) if isinstance(cookies, dict) else []
+                cookies.get("findings", [])
+                if isinstance(cookies, dict)
+                else []
             )
             score = calculate_baseline_score(
                 entry.get("missing_headers") or [],
