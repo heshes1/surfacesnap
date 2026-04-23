@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    {% set hosts = result.hosts if result is defined and result.hosts is defined else (hosts if hosts is defined else []) %}
+    {% set target_value = result.target if result is defined and result.target is defined else (target if target is defined else none) %}
+    {% set timestamp_value = result.timestamp_utc if result is defined and result.timestamp_utc is defined else (timestamp_utc if timestamp_utc is defined else none) %}
+    <title>SurfaceSnap Report{% if target_value %} - {{ target_value }}{% endif %}</title>
+    <style>
+      :root {
+        --bg: #f7faff;
+        --primary: #1d4ed8;
+        --text: #0f172a;
+        --muted: #475569;
+        --border: #e2e8f0;
+        --card: #ffffff;
+        --critical-bg: #fee2e2;
+        --critical-fg: #b91c1c;
+        --high-bg: #fecaca;
+        --high-fg: #991b1b;
+        --medium-bg: #fef3c7;
+        --medium-fg: #92400e;
+        --low-bg: #e2e8f0;
+        --low-fg: #334155;
+        --info-bg: #dbeafe;
+        --info-fg: #1e40af;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 400 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .page {
+        max-width: 1100px;
+        margin: 28px auto 40px;
+        padding: 0 16px;
+      }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+      }
+      .header {
+        padding: 20px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.7rem;
+        line-height: 1.2;
+      }
+      .subhead {
+        margin-top: 8px;
+        color: var(--muted);
+      }
+      .summary-grid {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .summary-card {
+        padding: 14px;
+      }
+      .summary-label {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .summary-value {
+        margin-top: 4px;
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--primary);
+        line-height: 1.1;
+      }
+      .section {
+        margin-top: 16px;
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      thead th {
+        position: sticky;
+        top: 0;
+        background: #eff6ff;
+        color: var(--text);
+        border-bottom: 1px solid var(--border);
+        border-top: 1px solid var(--border);
+        z-index: 1;
+      }
+      th,
+      td {
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--border);
+      }
+      tbody tr:nth-child(odd) td {
+        background: #fcfdff;
+      }
+      tbody tr:hover td {
+        background: #eff6ff;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .center {
+        text-align: center;
+      }
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        border: 1px solid var(--border);
+        background: #f8fafc;
+        color: var(--muted);
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+      .sev-critical {
+        background: var(--critical-bg);
+        color: var(--critical-fg);
+      }
+      .sev-high {
+        background: var(--high-bg);
+        color: var(--high-fg);
+      }
+      .sev-medium {
+        background: var(--medium-bg);
+        color: var(--medium-fg);
+      }
+      .sev-low {
+        background: var(--low-bg);
+        color: var(--low-fg);
+      }
+      .sev-info {
+        background: var(--info-bg);
+        color: var(--info-fg);
+      }
+      .details-cell {
+        padding-top: 0;
+      }
+      details {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fafcff;
+        margin-bottom: 10px;
+      }
+      details summary {
+        cursor: pointer;
+        font-weight: 600;
+        padding: 9px 12px;
+        color: var(--primary);
+      }
+      .detail-body {
+        padding: 8px 12px 12px;
+      }
+      .detail-label {
+        font-weight: 600;
+        margin: 8px 0 4px;
+      }
+      .kv {
+        color: var(--muted);
+      }
+      ul {
+        margin: 6px 0 8px 18px;
+        padding: 0;
+      }
+      @media (max-width: 900px) {
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 600px) {
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    {% set ns = namespace(resolved_count=0, missing_hsts_count=0, risk_chain_total=0) %}
+    {% for h in hosts %}
+      {% if h.resolve is defined and h.resolve and h.resolve.resolved %}
+        {% set ns.resolved_count = ns.resolved_count + 1 %}
+      {% endif %}
+      {% set present = h.header_check.present if h.header_check is defined and h.header_check and h.header_check.present is defined else {} %}
+      {% if h.resolve is defined and h.resolve and h.resolve.resolved and not present.get('Strict-Transport-Security', false) %}
+        {% set ns.missing_hsts_count = ns.missing_hsts_count + 1 %}
+      {% endif %}
+      {% set chain_count = (h.risk_chains | default([], true) | length) %}
+      {% set ns.risk_chain_total = ns.risk_chain_total + chain_count %}
+    {% endfor %}
+
+    <div class="page">
+      <div class="panel header">
+        <h1>SurfaceSnap Report</h1>
+        <div class="subhead">
+          {% if target_value %}<strong>Target:</strong> {{ target_value }}{% else %}<strong>Target:</strong> -{% endif %}
+          {% if timestamp_value %}<span class="muted"> | {{ timestamp_value }}</span>{% endif %}
+        </div>
+        <div class="summary-grid">
+          <div class="panel summary-card">
+            <div class="summary-label">Hosts scanned</div>
+            <div class="summary-value">{{ hosts | length }}</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Resolved</div>
+            <div class="summary-value">{{ ns.resolved_count }}</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Missing HSTS</div>
+            <div class="summary-value">{{ ns.missing_hsts_count }}</div>
+          </div>
+          <div class="panel summary-card">
+            <div class="summary-label">Risk chains</div>
+            <div class="summary-value">{{ ns.risk_chain_total }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page section">
+      <div class="panel">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Final scheme</th>
+                <th>Status code</th>
+                <th>TLS result</th>
+                <th>Missing headers</th>
+                <th>Heuristic Score</th>
+                <th>Risks</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for h in hosts %}
+              {% set missing_headers = h.missing_headers | default([], true) %}
+              {% set risk_chains = h.risk_chains | default([], true) %}
+              {% set cookie_findings = h.cookies.findings if h.cookies is defined and h.cookies and h.cookies.findings is defined else [] %}
+              {% set tls_failure = h.tls.failure_type if h.tls is defined and h.tls and h.tls.failure_type is defined and h.tls.failure_type else none %}
+              <tr>
+                <td>{{ h.host | default('-', true) }}</td>
+                <td>{{ h.http.scheme_used if h.http is defined and h.http and h.http.scheme_used is defined and h.http.scheme_used else '-' }}</td>
+                <td>{{ h.http.status_code if h.http is defined and h.http and h.http.status_code is defined and h.http.status_code is not none else '-' }}</td>
+                <td>
+                  {% if tls_failure %}
+                    <span class="badge {% if tls_failure == 'expired' or tls_failure == 'self_signed' or tls_failure == 'hostname_mismatch' or tls_failure == 'untrusted' or tls_failure == 'protocol_failure' %}sev-high{% else %}sev-medium{% endif %}">{{ tls_failure | replace('_', ' ') | upper }}</span>
+                  {% elif h.tls is defined and h.tls and h.tls.present is defined and h.tls.present %}
+                    <span class="badge sev-info">VERIFIED</span>
+                  {% else %}
+                    <span class="badge sev-low">UNAVAILABLE</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if missing_headers | length > 0 %}
+                    <div><strong>{{ missing_headers | length }}</strong></div>
+                    <div class="chip-row">
+                      {% for mh in missing_headers[:2] %}
+                        <span class="chip">{{ mh }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+                <td>{{ h.baseline_score if h.baseline_score is defined and h.baseline_score is not none else '-' }}</td>
+                <td>
+                  {% if risk_chains | length > 0 %}
+                    <div class="chip-row">
+                      {% for c in risk_chains %}
+                        {% set sev = c.severity | default('INFO', true) | upper %}
+                        <span class="badge {% if sev == 'CRITICAL' %}sev-critical{% elif sev == 'HIGH' %}sev-high{% elif sev == 'MEDIUM' %}sev-medium{% elif sev == 'LOW' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+              </tr>
+              <tr>
+                <td colspan="7" class="details-cell">
+                  <details>
+                    <summary>Details for {{ h.host | default('-', true) }}</summary>
+                    <div class="detail-body">
+                      <div class="detail-label">Missing headers</div>
+                      {% if missing_headers | length > 0 %}
+                        <div class="chip-row">
+                          {% for mh in missing_headers %}
+                            <span class="chip">{{ mh }}</span>
+                          {% endfor %}
+                        </div>
+                      {% else %}
+                        <div class="kv">&mdash;</div>
+                      {% endif %}
+
+                      <div class="detail-label">HTTP info</div>
+                      <div class="kv">HTTP status code: {{ h.http.status_code if h.http is defined and h.http and h.http.status_code is defined and h.http.status_code is not none else '-' }}</div>
+                      <div class="kv">Final URL: {{ h.http.final_url if h.http is defined and h.http and h.http.final_url is defined and h.http.final_url else '-' }}</div>
+                      <div class="kv">Redirect count: {{ h.http.redirect_count if h.http is defined and h.http and h.http.redirect_count is defined else '-' }}</div>
+
+                      <div class="detail-label">Cookie findings by severity</div>
+                      {% if cookie_findings | length > 0 %}
+                        <ul>
+                          {% for finding in cookie_findings %}
+                            {% set sev = finding.severity | default('info', true) | upper %}
+                            <li>
+                              <span class="badge {% if sev == 'HIGH_RISK' %}sev-high{% elif sev == 'WARNING' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
+                              {{ finding.message }}
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        <div class="kv">&mdash;</div>
+                      {% endif %}
+
+                      <div class="detail-label">TLS info</div>
+                      <div class="kv">Issuer: {{ h.tls.issuer if h.tls is defined and h.tls and h.tls.issuer is defined and h.tls.issuer else '-' }}</div>
+                      <div class="kv">Expired: {{ h.tls.expired if h.tls is defined and h.tls and h.tls.expired is defined else '-' }}</div>
+                      <div class="kv">Expires soon: {{ h.tls.expires_soon if h.tls is defined and h.tls and h.tls.expires_soon is defined else '-' }}</div>
+                      <div class="kv">Certificate expiry: {{ h.tls.not_after if h.tls is defined and h.tls and h.tls.not_after is defined and h.tls.not_after else '-' }}</div>
+                      {% set tls_error = h.tls.verification_error if h.tls is defined and h.tls and h.tls.verification_error is defined and h.tls.verification_error else none %}
+                      {% if tls_error %}
+                        <div class="kv">TLS verification result: {{ tls_error }}</div>
+                      {% elif h.tls is defined and h.tls and h.tls.present is defined and not h.tls.present %}
+                        <div class="kv">TLS metadata unavailable: {{ h.http.https_failed_reason if h.http is defined and h.http and h.http.https_failed_reason is defined and h.http.https_failed_reason else '-' }}</div>
+                      {% else %}
+                        <div class="kv">TLS verification result: verified</div>
+                      {% endif %}
+
+                      <div class="detail-label">Full risk chains</div>
+                      {% if risk_chains | length > 0 %}
+                        <ul>
+                          {% for c in risk_chains %}
+                            {% set sev = c.severity | default('INFO', true) | upper %}
+                            <li>
+                              <span class="badge {% if sev == 'CRITICAL' %}sev-critical{% elif sev == 'HIGH' %}sev-high{% elif sev == 'MEDIUM' %}sev-medium{% elif sev == 'LOW' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
+                              {{ c.text | default('-', true) }}
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        <div class="kv">&mdash;</div>
+                      {% endif %}
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

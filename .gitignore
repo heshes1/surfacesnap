@@ -1,0 +1,35 @@
+# Python
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+pip-wheel-metadata/
+*.egg
+
+# Generated scan outputs
+
+out*/
+out_*/
+example_report/
+
+# Generated reports
+
+*.json
+*.html
+!templates/report.html
+
+# Editors
+
+.idea/
+.vscode/
