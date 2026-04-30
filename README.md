@@ -5,7 +5,9 @@ SurfaceSnap is a lightweight passive scanner that inspects a host's HTTP securit
 ## Preview
 
 ### HTML Report
+
 ![Report](docs/report.png)
+
 ![CLI](docs/cli.png)
 
 ## Installation
