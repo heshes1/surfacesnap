@@ -2,6 +2,12 @@
 
 SurfaceSnap is a lightweight passive scanner that inspects a host's HTTP security headers, TLS certificate metadata, cookies, and basic HTTP behavior. It generates both JSON and HTML reports.
 
+## Preview
+
+### HTML Report
+![Report](docs/report.png)
+![CLI](docs/cli.png)
+
 ## Installation
 
 ```bash
