@@ -378,6 +378,7 @@ def get_tls_info(
     try:
         # Try a verified handshake first so trusted TLS stays trustworthy.
         verified_ctx = ssl.create_default_context(cafile=verify)
+        verified_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         verified_ctx.check_hostname = True
         with socket.create_connection((host, 443), timeout=timeout) as sock:
             with verified_ctx.wrap_socket(sock, server_hostname=host) as ssock:
@@ -390,6 +391,7 @@ def get_tls_info(
         try:
             # Retry without trust checks so the report can still show metadata.
             inspect_ctx = ssl.create_default_context()
+            inspect_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
             inspect_ctx.check_hostname = False
             inspect_ctx.verify_mode = ssl.CERT_NONE
             with socket.create_connection((host, 443), timeout=timeout) as sock:
