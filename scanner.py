@@ -214,44 +214,62 @@ def discover_subdomains(domain: str, timeout: int, wordlist_path: str | None = N
 
 def _discover_crt_subdomains(normalized_domain: str, timeout: int) -> list[str]:
     """Query crt.sh and return normalized subdomains for a target."""
+    import time
     url = f"https://crt.sh/?q=%25.{normalized_domain}&output=json"
-    try:
-        resp = requests.get(url, timeout=timeout)
-        if resp.status_code != 200:
-            return [normalized_domain]
+    
+    # Retry with exponential backoff for rate limiting
+    max_retries = 3
+    for attempt in range(max_retries):
         try:
-            data = resp.json()
-        except Exception:
-            return [normalized_domain]
-
-        results = set()
-        if isinstance(data, list):
-            for item in data:
-                nv = item.get("name_value") if isinstance(item, dict) else None
-                if not nv:
-                    continue
-                for name in str(nv).splitlines():
-                    n = name.strip().lower()
-                    if not n:
-                        continue
-                    if n.startswith("*."):
-                        n = n[2:]
-                    results.add(n)
-
-        valid_re = re.compile(r"^[a-z0-9.-]+$")
-        filtered = set()
-        for n in results:
-            if not valid_re.match(n):
+            resp = requests.get(url, timeout=timeout)
+            if resp.status_code == 200:
+                break
+            elif resp.status_code == 502 and attempt < max_retries - 1:
+                # Rate limited, wait and retry
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                time.sleep(wait_time)
                 continue
-            if n == normalized_domain or n.endswith("." + normalized_domain):
-                filtered.add(n)
-
-        # Keep the root host even if crt.sh returns only subdomains.
-        filtered.add(normalized_domain)
-
-        return sorted(filtered)
+            else:
+                return [normalized_domain]
+        except Exception:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                time.sleep(wait_time)
+                continue
+            else:
+                return [normalized_domain]
+    
+    try:
+        data = resp.json()
     except Exception:
         return [normalized_domain]
+
+    results = set()
+    if isinstance(data, list):
+        for item in data:
+            nv = item.get("name_value") if isinstance(item, dict) else None
+            if not nv:
+                continue
+            for name in str(nv).splitlines():
+                n = name.strip().lower()
+                if not n:
+                    continue
+                if n.startswith("*."):
+                    n = n[2:]
+                results.add(n)
+
+    valid_re = re.compile(r"^[a-z0-9.-]+$")
+    filtered = set()
+    for n in results:
+        if not valid_re.match(n):
+            continue
+        if n == normalized_domain or n.endswith("." + normalized_domain):
+            filtered.add(n)
+
+    # Keep the root host even if crt.sh returns only subdomains.
+    filtered.add(normalized_domain)
+
+    return sorted(filtered)
 
 
 def _discover_wordlist_subdomains(root_domain: str, wordlist_path: str) -> list[str]:
@@ -535,10 +553,7 @@ def scan_target(
                 except Exception:
                     return False
 
-            try_tls = (http_info.get("scheme_used") == "https") or port_443_open(
-                host,
-                timeout,
-            )
+            try_tls = port_443_open(host, timeout)
             if try_tls:
                 tls = get_tls_info(host, timeout, ca_bundle=ca_bundle)
             else:
@@ -549,7 +564,7 @@ def scan_target(
                     "expires_soon": False,
                     "issuer": None,
                     "verification_error": None,
-                    "failure_type": None,
+                    "failure_type": "tls_absent",
                 }
             entry["tls"] = tls
 

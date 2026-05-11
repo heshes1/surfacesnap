@@ -108,22 +108,25 @@ def _classify_tls_failure_type(
 def resolve_host(host: str, timeout: int) -> Dict[str, Any]:
     """Resolve a hostname to A/AAAA addresses within the requested timeout."""
     ips: List[str] = []
+    error_msg = None
     try:
         for rtype in ("A", "AAAA"):
             try:
                 answers = dns.resolver.resolve(host, rtype, lifetime=timeout)
                 for a in answers:
                     ips.append(str(a))
-            except Exception:
-                # ignore individual record failures
-                pass
-    except Exception:
-        return {"host": host, "resolved": False, "ips": []}
+            except Exception as e:
+                # Record the error but continue trying other record types
+                if error_msg is None:
+                    error_msg = str(e)
+    except Exception as e:
+        error_msg = str(e)
 
     return {
         "host": host,
         "resolved": len(ips) > 0,
         "ips": ips,
+        "error": error_msg,
     }
 
 
@@ -531,7 +534,11 @@ def get_tls_info(
                 with inspect_ctx.wrap_socket(sock, server_hostname=host) as ssock:
                     cert = ssock.getpeercert()
                     cert_der = ssock.getpeercert(binary_form=True)
-        except Exception:
+        except Exception as exc:
+            if isinstance(exc, OSError) and not isinstance(exc, ssl.SSLError):
+                failure_type = "tls_absent"
+            else:
+                failure_type = _classify_tls_failure_type(verification_error)
             return {
                 "present": False,
                 "not_after": None,
@@ -539,7 +546,7 @@ def get_tls_info(
                 "expires_soon": False,
                 "issuer": None,
                 "verification_error": verification_error,
-                "failure_type": _classify_tls_failure_type(verification_error),
+                "failure_type": failure_type,
             }
 
     enabled = True
@@ -587,6 +594,14 @@ def get_tls_info(
         issuer_str=issuer_str,
         subject_str=subject_str,
     )
+
+    # Set failure_type based on verification result
+    if verification_error is None and cert is not None:
+        failure_type = "tls_valid"
+    elif cert is None:
+        failure_type = "tls_absent"
+    elif failure_type is None:
+        failure_type = "tls_invalid"
 
     return {
         "present": enabled,

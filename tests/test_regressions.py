@@ -817,6 +817,191 @@ class SeverityLabelTests(unittest.TestCase):
         self.assertTrue(all(s == "medium" for s in severities))
 
 
+class MultiTargetReportTests(unittest.TestCase):
+    def test_multi_target_creates_separate_reports(self):
+        """Test that scanning multiple targets creates separate report files."""
+        import tempfile
+        import os
+        from main import _scan_one_target
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Scan first target
+            _scan_one_target("github.com", tmpdir, 5, 0, None, None, "github_com")
+            
+            # Scan second target  
+            _scan_one_target("example.com", tmpdir, 5, 0, None, None, "example_com")
+            
+            # Check that separate files exist
+            github_html = os.path.join(tmpdir, "github_com_report.html")
+            github_json = os.path.join(tmpdir, "github_com_result.json")
+            example_html = os.path.join(tmpdir, "example_com_report.html")
+            example_json = os.path.join(tmpdir, "example_com_result.json")
+            
+            self.assertTrue(os.path.exists(github_html))
+            self.assertTrue(os.path.exists(github_json))
+            self.assertTrue(os.path.exists(example_html))
+            self.assertTrue(os.path.exists(example_json))
+            
+            # Check content is different
+            with open(github_json, 'r') as f:
+                github_data = f.read()
+            with open(example_json, 'r') as f:
+                example_data = f.read()
+            
+            self.assertIn("github.com", github_data)
+            self.assertIn("example.com", example_data)
+            self.assertNotEqual(github_data, example_data)
+
+    def test_single_target_uses_default_names(self):
+        """Test that single target scanning uses default report names."""
+        import tempfile
+        import os
+        from main import _scan_one_target
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Scan single target without base_name
+            _scan_one_target("github.com", tmpdir, 5, 0, None, None, None)
+            
+            # Check that default files exist
+            default_html = os.path.join(tmpdir, "report.html")
+            default_json = os.path.join(tmpdir, "result.json")
+            
+            self.assertTrue(os.path.exists(default_html))
+            self.assertTrue(os.path.exists(default_json))
+
+
+class CSPReportRenderingTests(unittest.TestCase):
+    def test_csp_findings_appear_in_html_report(self):
+        """Test that CSP findings are rendered in HTML reports."""
+        import tempfile
+        import os
+        from report import write_reports
+        from checks import analyze_csp
+
+        # Create test data with CSP findings
+        csp_result = analyze_csp({"content-security-policy": "script-src 'unsafe-inline'"})
+        test_result = {
+            "input_target": "test.com",
+            "target": "test.com", 
+            "timestamp_utc": "2026-01-01T00:00:00+00:00",
+            "hosts": [{
+                "host": "test.com",
+                "csp": csp_result,
+                "http": {"scheme_used": "https", "status_code": 200},
+                "resolve": {"resolved": True, "ips": ["1.2.3.4"]},
+                "header_check": {"missing_headers": [], "present": {}},
+                "cookies": {"findings": []},
+                "tls": {"present": True, "failure_type": "tls_valid"},
+                "baseline_score": 100
+            }],
+            "summary": {"total_hosts": 1, "resolved_hosts": 1}
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            html_path, json_path = write_reports(test_result, tmpdir)
+            
+            # Check HTML contains CSP findings
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            self.assertIn("CSP findings", html_content)
+            self.assertIn("unsafe-inline", html_content)
+            self.assertIn("medium", html_content)
+
+
+class TLSMetadataCollectionTests(unittest.TestCase):
+    def test_tls_info_collected_for_expired_cert(self):
+        """Test that TLS metadata is collected even for expired certificates."""
+        from checks import get_tls_info
+        
+        # Mock expired cert scenario
+        with mock.patch('checks.socket.create_connection') as mock_conn:
+            mock_sock = mock.Mock()
+            mock_conn.return_value.__enter__.return_value = mock_sock
+            
+            with mock.patch('checks.ssl.create_default_context') as mock_ctx:
+                mock_context = mock.Mock()
+                mock_ctx.return_value = mock_context
+                
+                mock_ssock = mock.Mock()
+                mock_ssock.getpeercert.return_value = {
+                    'subject': ((('commonName', 'expired.badssl.com'),),),
+                    'issuer': ((('commonName', 'Sectigo'),),),
+                    'notAfter': '20200101000000Z'
+                }
+                mock_ssock.getpeercert_binary_form.return_value = b'dummy'
+                
+                mock_context_manager = mock.Mock()
+                mock_context_manager.__enter__ = mock.Mock(return_value=mock_ssock)
+                mock_context_manager.__exit__ = mock.Mock(return_value=None)
+                
+                # First call (verified) raises SSLError, second call (inspect) succeeds
+                import ssl
+                mock_context.wrap_socket.side_effect = [
+                    ssl.SSLError("certificate verify failed"),
+                    mock_context_manager
+                ]
+                
+                result = get_tls_info("expired.badssl.com", 5)
+                
+                # Should have collected cert info despite verification failure
+                self.assertIsNotNone(result.get("issuer"))
+                self.assertIsNotNone(result.get("not_after"))
+                self.assertTrue(result.get("expired", False))
+
+    def test_tls_absent_when_no_cert_connection(self):
+        """Test that tls_absent is reported when port 443 is not open."""
+        from checks import get_tls_info
+        
+        with mock.patch('checks.socket.create_connection', side_effect=OSError):
+            result = get_tls_info("nonexistent.com", 5)
+            
+            self.assertEqual(result.get("failure_type"), "tls_absent")
+            self.assertFalse(result.get("present"))
+
+
+class CrtShRetryTests(unittest.TestCase):
+    def test_crt_sh_retry_on_502(self):
+        """Test that crt.sh requests retry on 502 errors."""
+        from scanner import _discover_crt_subdomains
+        
+        call_count = 0
+        def mock_get(url, timeout):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call fails with 502
+                response = mock.Mock()
+                response.status_code = 502
+                return response
+            else:
+                # Second call succeeds
+                response = mock.Mock()
+                response.status_code = 200
+                response.json.return_value = [{"name_value": "test.com"}]
+                return response
+        
+        with mock.patch('scanner.requests.get', side_effect=mock_get):
+            with mock.patch('time.sleep'):  # Don't actually sleep
+                result = _discover_crt_subdomains("test.com", 5)
+                
+                self.assertEqual(call_count, 2)  # Should have retried
+                self.assertIn("test.com", result)
+
+
+class DNSResolutionErrorTests(unittest.TestCase):
+    def test_dns_resolution_includes_error_details(self):
+        """Test that DNS resolution failures include error information."""
+        from checks import resolve_host
+        
+        with mock.patch('checks.dns.resolver.resolve', side_effect=Exception("NXDOMAIN")):
+            result = resolve_host("nonexistent.domain", 5)
+            
+            self.assertFalse(result.get("resolved"))
+            self.assertIsNotNone(result.get("error"))
+            self.assertIn("NXDOMAIN", result.get("error", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -263,6 +263,7 @@
               {% set missing_headers = h.missing_headers | default([], true) %}
               {% set risk_chains = h.risk_chains | default([], true) %}
               {% set cookie_findings = h.cookies.findings if h.cookies is defined and h.cookies and h.cookies.findings is defined else [] %}
+              {% set csp_findings = h.csp.findings if h.csp is defined and h.csp and h.csp.findings is defined else [] %}
               {% set tls_failure = h.tls.failure_type if h.tls is defined and h.tls and h.tls.failure_type is defined and h.tls.failure_type else none %}
               <tr>
                 <td>{{ h.host | default('-', true) }}</td>
@@ -331,6 +332,21 @@
                             {% set sev = finding.severity | default('info', true) | upper %}
                             <li>
                               <span class="badge {% if sev == 'HIGH_RISK' %}sev-high{% elif sev == 'WARNING' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
+                              {{ finding.message }}
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        <div class="kv">&mdash;</div>
+                      {% endif %}
+
+                      <div class="detail-label">CSP findings by severity</div>
+                      {% if csp_findings | length > 0 %}
+                        <ul>
+                          {% for finding in csp_findings %}
+                            {% set sev = finding.severity | default('info', true) | upper %}
+                            <li>
+                              <span class="badge {% if sev == 'HIGH' %}sev-high{% elif sev == 'MEDIUM' %}sev-medium{% elif sev == 'LOW' %}sev-low{% else %}sev-info{% endif %}">{{ sev }}</span>
                               {{ finding.message }}
                             </li>
                           {% endfor %}

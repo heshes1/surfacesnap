@@ -33,3 +33,27 @@ example_report/
 
 .idea/
 .vscode/
+
+# Tests
+tests/
+.test/
+.internal/tests/
+
+# Coverage
+coverage/
+
+# Temporary outputs
+test_*/
+tmp/
+audit_report_out/
+audit_report_out_2/
+audit_report_out_3/
+cli_audit_out/
+out_smoke/
+out_verify/
+out_verify_2/
+out_verify_3/
+out_verify_4/
+out_verify_5/
+release_smoke_out/
+report_toprow_check/

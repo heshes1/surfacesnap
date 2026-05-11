@@ -21,6 +21,7 @@ def _scan_one_target(
     max_hosts: int,
     ca_bundle: Optional[str],
     wordlist: Optional[str],
+    base_name: Optional[str] = None,
 ) -> None:
     # Ensure the report directory exists before writing files.
     os.makedirs(out_dir, exist_ok=True)
@@ -36,7 +37,7 @@ def _scan_one_target(
     )
 
     # Write both report formats for the same scan result.
-    html_path, json_path = write_reports(result, out_dir)
+    html_path, json_path = write_reports(result, out_dir, base_name=base_name)
 
     # Print a short summary after each target finishes.
     summary = result.get("summary", {})
@@ -121,8 +122,12 @@ def scan(
         typer.echo("Error: provide --target/-t and/or --targets-file/-f.", err=True)
         raise typer.Exit(code=1)
 
+    # Use per-target filenames when scanning multiple targets
+    use_per_target_names = len(targets) > 1
+
     for item in targets:
-        _scan_one_target(item, out, timeout, max_hosts, ca_bundle, wordlist)
+        base_name = item.replace('.', '_') if use_per_target_names else None
+        _scan_one_target(item, out, timeout, max_hosts, ca_bundle, wordlist, base_name)
 
 
 @app.command()

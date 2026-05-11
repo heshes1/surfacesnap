@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -75,12 +75,18 @@ def write_html(result: Dict[str, Any], out_dir: str) -> str:
 def write_reports(
     result: Dict[str, Any],
     out_dir: str,
-    base_name: str = "surfacesnap-report",
+    base_name: Optional[str] = None,
 ) -> tuple[str, str]:
     """Write HTML and JSON reports atomically and return both final paths."""
     os.makedirs(out_dir, exist_ok=True)
-    html_path = os.path.join(out_dir, "report.html")
-    json_path = os.path.join(out_dir, "result.json")
+    if base_name is None:
+        # Backward compatibility: use default names
+        html_path = os.path.join(out_dir, "report.html")
+        json_path = os.path.join(out_dir, "result.json")
+    else:
+        # Per-target naming: use base_name as prefix
+        html_path = os.path.join(out_dir, f"{base_name}_report.html")
+        json_path = os.path.join(out_dir, f"{base_name}_result.json")
 
     # Use temp files so callers never see half-finished output.
     html_fd, html_tmp_path = tempfile.mkstemp(
