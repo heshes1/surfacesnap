@@ -1,6 +1,0 @@
-www
-api
-test
-random1
-random2
-random3
