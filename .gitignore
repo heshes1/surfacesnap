@@ -22,12 +22,12 @@ pip-wheel-metadata/
 out*/
 out_*/
 example_report/
-target.txt/
-test_target.txt/
-test_wordlist.txt/
+targets.txt
+test_targets.txt
+test_wordlist.txt
 docscli.png/
 docsreport.png/
-large_wordlist.txt/
+large_wordlist.txt
 
 # Generated reports
 
