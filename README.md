@@ -45,6 +45,7 @@ Optional flags:
 --timeout 3
 --out out
 --ca-bundle path/to/ca-bundle.pem
+--wordlist path/to/wordlist.txt
 ```
 
 Example:

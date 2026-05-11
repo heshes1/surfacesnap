@@ -271,7 +271,128 @@ def baseline_header_check(headers: Dict[str, str]) -> Dict[str, Any]:
     missing = [
         display for lower, display in baseline.items() if lower not in normalized
     ]
-    return {"missing_headers": missing, "present": present}
+    
+    # Create findings for missing headers with severity labels
+    findings: List[Dict[str, str]] = []
+    for header in missing:
+        findings.append({
+            "severity": "low",
+            "message": f"Security header '{header}' is missing",
+            "header": header
+        })
+    
+    return {"missing_headers": missing, "present": present, "findings": findings}
+
+
+def analyze_csp(headers: Dict[str, str]) -> Dict[str, Any]:
+    """Parse Content-Security-Policy header for unsafe directives."""
+    if not headers:
+        return {"findings": []}
+
+    norm = {k.lower(): v for k, v in (headers or {}).items()}
+    csp_value = norm.get("content-security-policy")
+    
+    if not csp_value:
+        return {"findings": []}
+
+    findings: List[Dict[str, str]] = []
+    
+    # Split directives by semicolon, handling malformed input safely.
+    try:
+        directives = str(csp_value).split(";")
+    except Exception:
+        return {"findings": []}
+    
+    for directive in directives:
+        directive = directive.strip()
+        if not directive:
+            continue
+        
+        # Check for unsafe-inline
+        if "unsafe-inline" in directive.lower():
+            findings.append({
+                "severity": "medium",
+                "message": f"CSP directive contains 'unsafe-inline'",
+                "finding_type": "csp_unsafe_inline"
+            })
+        
+        # Check for unsafe-eval
+        if "unsafe-eval" in directive.lower():
+            findings.append({
+                "severity": "high",
+                "message": f"CSP directive contains 'unsafe-eval'",
+                "finding_type": "csp_unsafe_eval"
+            })
+        
+        # Check for wildcard * (but not *. which is subdomain wildcard)
+        # Match standalone asterisk or space-separated asterisk
+        if re.search(r"(?:^|\s)\*(?:\s|$)", directive):
+            findings.append({
+                "severity": "medium",
+                "message": f"CSP directive contains wildcard '*'",
+                "finding_type": "csp_wildcard"
+            })
+    
+    return {"findings": findings}
+
+
+def _is_session_like_cookie(name: str) -> bool:
+    """Check if cookie name indicates a session, auth, or token cookie."""
+    name_lower = name.lower()
+    session_keywords = ("session", "auth", "token", "jwt", "sid")
+    return any(keyword in name_lower for keyword in session_keywords)
+
+
+def _analyze_csp(headers: Dict[str, str]) -> Dict[str, Any]:
+    """Parse Content-Security-Policy header for unsafe directives."""
+    if not headers:
+        return {"findings": []}
+
+    norm = {k.lower(): v for k, v in (headers or {}).items()}
+    csp_value = norm.get("content-security-policy")
+    
+    if not csp_value:
+        return {"findings": []}
+
+    findings: List[Dict[str, str]] = []
+    
+    # Split directives by semicolon, handling malformed input safely.
+    try:
+        directives = str(csp_value).split(";")
+    except Exception:
+        return {"findings": []}
+    
+    for directive in directives:
+        directive = directive.strip()
+        if not directive:
+            continue
+        
+        # Check for unsafe-inline
+        if "unsafe-inline" in directive.lower():
+            findings.append({
+                "severity": "medium",
+                "message": f"CSP directive contains 'unsafe-inline'",
+                "finding_type": "csp_unsafe_inline"
+            })
+        
+        # Check for unsafe-eval
+        if "unsafe-eval" in directive.lower():
+            findings.append({
+                "severity": "high",
+                "message": f"CSP directive contains 'unsafe-eval'",
+                "finding_type": "csp_unsafe_eval"
+            })
+        
+        # Check for wildcard * (but not *. which is subdomain wildcard)
+        # Match standalone asterisk or space-separated asterisk
+        if re.search(r"(?:^|\s)\*(?:\s|$)", directive):
+            findings.append({
+                "severity": "medium",
+                "message": f"CSP directive contains wildcard '*'",
+                "finding_type": "csp_wildcard"
+            })
+    
+    return {"findings": findings}
 
 
 def analyze_cookies(
@@ -344,16 +465,28 @@ def analyze_cookies(
             message = f"Cookie '{name}' uses SameSite=None but is missing Secure"
             issues.append(message)
             findings.append({"severity": "high_risk", "message": message})
-        if not httponly:
+        
+        # Session-like cookies: detect missing HttpOnly
+        if _is_session_like_cookie(name) and not httponly:
+            message = f"Session-like cookie '{name}' is missing HttpOnly"
+            issues.append(message)
+            findings.append({"severity": "medium", "message": message})
+        elif not httponly:
             message = f"Cookie '{name}' is missing HttpOnly"
             issues.append(message)
-            findings.append({"severity": "warning", "message": message})
-        if https_used and not secure:
+            findings.append({"severity": "medium", "message": message})
+        
+        # Session-like cookies: detect missing Secure
+        if _is_session_like_cookie(name) and not secure:
+            message = f"Session-like cookie '{name}' is missing Secure"
+            issues.append(message)
+            findings.append({"severity": "medium", "message": message})
+        elif https_used and not secure:
             message = (
                 f"Cookie '{name}' is missing Secure while site appears to use HTTPS"
             )
             issues.append(message)
-            findings.append({"severity": "warning", "message": message})
+            findings.append({"severity": "medium", "message": message})
 
     return {
         "cookie_count": len(details),

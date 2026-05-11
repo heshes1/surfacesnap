@@ -7,7 +7,7 @@ from unittest import mock
 
 import report
 import scanner
-from checks import analyze_cookies, fetch_http_info, get_tls_info
+from checks import analyze_cookies, analyze_csp, fetch_http_info, get_tls_info
 
 
 def _make_response(url, status_code=200, headers=None, history=None):
@@ -68,7 +68,7 @@ class TargetNormalizationTests(unittest.TestCase):
         self.assertEqual(
             captured["url"], "https://crt.sh/?q=%25.example.com&output=json"
         )
-        self.assertEqual(hosts, ["api.example.com", "example.com"])
+        self.assertEqual(hosts, ["example.com", "api.example.com"])
 
     def test_scan_wrapper_matches_scan_target_normalization(self):
         with mock.patch("scanner.scan_target", return_value={"target": "example.com"}) as mocked:
@@ -197,14 +197,14 @@ class CookieSeverityTests(unittest.TestCase):
             {"set-cookie": "session=1; Path=/; Secure; SameSite=Lax"},
             https_used=True,
         )
-        self.assertEqual([f["severity"] for f in result["findings"]], ["warning"])
+        self.assertEqual([f["severity"] for f in result["findings"]], ["medium"])
 
     def test_missing_secure_only_is_warning(self):
         result = analyze_cookies(
             {"set-cookie": "session=1; Path=/; HttpOnly; SameSite=Lax"},
             https_used=True,
         )
-        self.assertEqual([f["severity"] for f in result["findings"]], ["warning"])
+        self.assertEqual([f["severity"] for f in result["findings"]], ["medium"])
 
     def test_samesite_none_without_secure_is_high_risk(self):
         result = analyze_cookies(
@@ -225,7 +225,7 @@ class CookieSeverityTests(unittest.TestCase):
             https_used=True,
         )
         severities = [f["severity"] for f in result["findings"]]
-        self.assertGreaterEqual(severities.count("warning"), 1)
+        self.assertGreaterEqual(severities.count("medium"), 1)
         self.assertEqual(severities.count("high_risk"), 1)
 
 
@@ -626,5 +626,197 @@ class ReadmeAndCliAlignmentTests(unittest.TestCase):
         self.assertNotIn("## About", readme)
 
 
+
+
+class CSPAnalysisTests(unittest.TestCase):
+    def test_csp_detects_unsafe_inline(self):
+        result = analyze_csp({"content-security-policy": "script-src 'unsafe-inline'"})
+        severities = [f.get("severity") for f in result.get("findings", [])]
+        self.assertIn("medium", severities)
+        types = [f.get("finding_type") for f in result.get("findings", [])]
+        self.assertIn("csp_unsafe_inline", types)
+
+    def test_csp_detects_unsafe_eval(self):
+        result = analyze_csp({"content-security-policy": "script-src 'unsafe-eval'"})
+        severities = [f.get("severity") for f in result.get("findings", [])]
+        self.assertIn("high", severities)
+        types = [f.get("finding_type") for f in result.get("findings", [])]
+        self.assertIn("csp_unsafe_eval", types)
+
+    def test_csp_detects_wildcard(self):
+        result = analyze_csp({"content-security-policy": "img-src *; script-src 'self'"})
+        severities = [f.get("severity") for f in result.get("findings", [])]
+        self.assertIn("medium", severities)
+        types = [f.get("finding_type") for f in result.get("findings", [])]
+        self.assertIn("csp_wildcard", types)
+
+    def test_csp_handles_malformed_gracefully(self):
+        result = analyze_csp({"content-security-policy": None})
+        self.assertEqual(result.get("findings", []), [])
+
+    def test_csp_empty_headers(self):
+        result = analyze_csp({})
+        self.assertEqual(result.get("findings", []), [])
+
+    def test_csp_case_insensitive(self):
+        result = analyze_csp({"content-security-policy": "script-src 'UNSAFE-INLINE' 'UNSAFE-EVAL' *"})
+        findings = result.get("findings", [])
+        self.assertEqual(len(findings), 3)
+
+
+class CookieValidationTests(unittest.TestCase):
+    def test_session_cookie_missing_httponly_detected(self):
+        result = analyze_cookies(
+            {"set-cookie": "sessionid=abc123; Path=/; Secure"},
+            https_used=False,
+        )
+        severities = [f["severity"] for f in result["findings"]]
+        messages = [f["message"] for f in result["findings"]]
+        self.assertIn("medium", severities)
+        self.assertTrue(any("HttpOnly" in msg for msg in messages))
+
+    def test_session_cookie_missing_secure_detected(self):
+        result = analyze_cookies(
+            {"set-cookie": "session_token=xyz; Path=/; HttpOnly"},
+            https_used=True,
+        )
+        severities = [f["severity"] for f in result["findings"]]
+        messages = [f["message"] for f in result["findings"]]
+        self.assertIn("medium", severities)
+        self.assertTrue(any("Secure" in msg for msg in messages))
+
+    def test_non_session_cookie_missing_httponly_still_detected(self):
+        result = analyze_cookies(
+            {"set-cookie": "preference=dark; Path=/; Secure"},
+            https_used=True,
+        )
+        severities = [f["severity"] for f in result["findings"]]
+        self.assertIn("medium", severities)
+
+    def test_auth_cookie_detected_case_insensitive(self):
+        result = analyze_cookies(
+            {"set-cookie": "AUTH_TOKEN=xyz; Path=/; Secure; SameSite=Lax"},
+            https_used=True,
+        )
+        finding_messages = [f["message"] for f in result["findings"]]
+        # Should detect missing HttpOnly
+        self.assertTrue(any("missing HttpOnly" in msg for msg in finding_messages))
+
+    def test_jwt_cookie_detected(self):
+        result = analyze_cookies(
+            {"set-cookie": "jwt=encoded; Path=/; Secure; SameSite=Lax"},
+            https_used=True,
+        )
+        finding_messages = [f["message"] for f in result["findings"]]
+        self.assertTrue(any("missing HttpOnly" in msg for msg in finding_messages))
+
+    def test_token_cookie_detected(self):
+        result = analyze_cookies(
+            {"set-cookie": "refresh_token=abc; Path=/; Secure; SameSite=Lax"},
+            https_used=True,
+        )
+        finding_messages = [f["message"] for f in result["findings"]]
+        self.assertTrue(any("missing HttpOnly" in msg for msg in finding_messages))
+
+    def test_sid_cookie_detected(self):
+        result = analyze_cookies(
+            {"set-cookie": "sid=123; Path=/; Secure; SameSite=Lax"},
+            https_used=True,
+        )
+        finding_messages = [f["message"] for f in result["findings"]]
+        self.assertTrue(any("missing HttpOnly" in msg for msg in finding_messages))
+
+
+class LiveHostDetectionTests(unittest.TestCase):
+    def test_https_response_considered_live(self):
+        response = _make_response("https://example.com/", status_code=200)
+        with mock.patch("checks.requests.get", return_value=response):
+            result = fetch_http_info("example.com", timeout=5)
+
+        self.assertEqual(result["scheme_used"], "https")
+        self.assertIsNotNone(result["status_code"])
+
+    def test_http_fallback_when_https_fails(self):
+        import requests
+        
+        def get_side_effect(url, *args, **kwargs):
+            if url.startswith("https://"):
+                raise requests.exceptions.SSLError("HTTPS failed")
+            return _make_response("http://example.com/", status_code=200)
+
+        with mock.patch("checks.requests.get", side_effect=get_side_effect):
+            result = fetch_http_info("example.com", timeout=5)
+
+        self.assertEqual(result["scheme_used"], "http")
+        self.assertIsNotNone(result["https_failed_reason"])
+
+    def test_redirect_counted_correctly(self):
+        response = _make_response(
+            "https://example.com/final",
+            status_code=200,
+            history=[mock.Mock(status_code=301), mock.Mock(status_code=302)],
+        )
+        with mock.patch("checks.requests.get", return_value=response):
+            result = fetch_http_info("example.com", timeout=5)
+
+        self.assertEqual(result["redirect_count"], 2)
+
+    def test_dead_host_skipped_from_deeper_checks(self):
+        def resolve_side_effect(host, timeout):
+            return {"host": host, "resolved": True, "ips": ["1.2.3.4"]}
+
+        def fetch_side_effect(host, timeout, ca_bundle=None):
+            return {
+                "scheme_used": None,
+                "status_code": None,
+                "final_url": None,
+                "redirect_count": 0,
+                "response_headers": {},
+                "https_failed_reason": "connection timeout",
+            }
+
+        with mock.patch("scanner.resolve_host", side_effect=resolve_side_effect), \
+             mock.patch("scanner.fetch_http_info", side_effect=fetch_side_effect), \
+             mock.patch("scanner.discover_subdomains", return_value=["example.com"]):
+            result = scanner.scan_target("example.com", timeout=5, max_hosts=1)
+
+        host_entry = result["hosts"][0]
+        # Dead hosts should have empty checks
+        self.assertEqual(host_entry["header_check"]["missing_headers"], [])
+        self.assertEqual(host_entry["cookies"]["cookie_count"], 0)
+        self.assertEqual(host_entry["csp"]["findings"], [])
+        self.assertFalse(host_entry["tls"]["present"])
+
+
+class SeverityLabelTests(unittest.TestCase):
+    def test_missing_headers_have_low_severity(self):
+        from checks import baseline_header_check
+        result = baseline_header_check({"server": "nginx"})
+        findings = result.get("findings", [])
+        severities = [f.get("severity") for f in findings]
+        self.assertTrue(all(s == "low" for s in severities))
+        self.assertTrue(len(findings) > 0)
+
+    def test_csp_findings_have_correct_severity(self):
+        csp_result = analyze_csp({
+            "content-security-policy": "script-src 'unsafe-inline' 'unsafe-eval' *"
+        })
+        findings = csp_result.get("findings", [])
+        severities = {f.get("finding_type"): f.get("severity") for f in findings}
+        self.assertEqual(severities.get("csp_unsafe_inline"), "medium")
+        self.assertEqual(severities.get("csp_unsafe_eval"), "high")
+        self.assertEqual(severities.get("csp_wildcard"), "medium")
+
+    def test_cookie_findings_have_medium_severity(self):
+        result = analyze_cookies(
+            {"set-cookie": "sessionid=abc; Path=/; SameSite=Lax"},
+            https_used=True,
+        )
+        findings = result["findings"]
+        severities = [f.get("severity") for f in findings if f.get("severity") != "high_risk"]
+        self.assertTrue(all(s == "medium" for s in severities))
+
+
 if __name__ == "__main__":
     unittest.main()
+

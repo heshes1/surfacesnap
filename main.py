@@ -20,6 +20,7 @@ def _scan_one_target(
     timeout: int,
     max_hosts: int,
     ca_bundle: Optional[str],
+    wordlist: Optional[str],
 ) -> None:
     # Ensure the report directory exists before writing files.
     os.makedirs(out_dir, exist_ok=True)
@@ -31,6 +32,7 @@ def _scan_one_target(
         timeout=timeout,
         max_hosts=max_hosts_value,
         ca_bundle=ca_bundle,
+        wordlist_path=wordlist,
     )
 
     # Write both report formats for the same scan result.
@@ -107,6 +109,11 @@ def scan(
         "--ca-bundle",
         help="Path to a PEM CA bundle to use for HTTPS verification",
     ),
+    wordlist: Optional[str] = typer.Option(
+        None,
+        "--wordlist",
+        help="Path to a wordlist file for subdomain discovery (one per line)",
+    ),
 ) -> None:
     """Run a surface scan against one or more targets."""
     targets = _load_targets(target, targets_file)
@@ -115,7 +122,7 @@ def scan(
         raise typer.Exit(code=1)
 
     for item in targets:
-        _scan_one_target(item, out, timeout, max_hosts, ca_bundle)
+        _scan_one_target(item, out, timeout, max_hosts, ca_bundle, wordlist)
 
 
 @app.command()
