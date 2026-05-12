@@ -173,6 +173,17 @@ def build_risk_chains(result: Dict[str, Any]) -> List[str]:
     return dedup
 
 
+def _ensure_root_host_first(domain: str, hosts: list[str]) -> list[str]:
+    """Ensure the root domain is first in the host list, deduplicated."""
+    seen = set([domain])
+    result = [domain]
+    for host in hosts:
+        if host != domain and host not in seen:
+            result.append(host)
+            seen.add(host)
+    return result
+
+
 def discover_subdomains(domain: str, timeout: int, wordlist_path: str | None = None) -> list[str]:
     """Query crt.sh and optionally wordlist, returning normalized subdomains for a target."""
     if "://" in domain:
@@ -203,13 +214,7 @@ def discover_subdomains(domain: str, timeout: int, wordlist_path: str | None = N
             seen.add(host)
     
     # Ensure root domain is present and first
-    if normalized_domain not in merged:
-        merged.insert(0, normalized_domain)
-    elif merged[0] != normalized_domain:
-        merged.remove(normalized_domain)
-        merged.insert(0, normalized_domain)
-    
-    return merged
+    return _ensure_root_host_first(normalized_domain, merged)
 
 
 def _discover_crt_subdomains(normalized_domain: str, timeout: int) -> list[str]:
@@ -231,17 +236,16 @@ def _discover_crt_subdomains(normalized_domain: str, timeout: int) -> list[str]:
                 continue
             else:
                 return [normalized_domain]
-        except Exception:
+        except requests.exceptions.RequestException:
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt
                 time.sleep(wait_time)
                 continue
-            else:
-                return [normalized_domain]
+            return [normalized_domain]
     
     try:
         data = resp.json()
-    except Exception:
+    except ValueError:
         return [normalized_domain]
 
     results = set()
@@ -306,9 +310,6 @@ def _discover_wordlist_subdomains(root_domain: str, wordlist_path: str) -> list[
 
 def _has_wildcard_dns(domain: str, timeout: int) -> bool:
     """Detect wildcard DNS by resolving random subdomains under the root domain."""
-    import random
-    import string
-    
     results = []
     # Try at least two random subdomains
     for _ in range(2):
@@ -333,9 +334,6 @@ def _filter_wildcard_false_positives(
 ) -> list[str]:
     """Filter out wordlist results that are likely wildcard DNS false positives."""
     # Get the IPs that the wildcard resolves to
-    import random
-    import string
-    
     wildcard_ips = set()
     try:
         for _ in range(2):
@@ -368,51 +366,8 @@ def _filter_wildcard_false_positives(
 
 
 def discover_subdomains_deprecated(domain: str, timeout: int) -> list[str]:
-    """DEPRECATED: Use discover_subdomains() instead. Query crt.sh and return normalized subdomains for a target."""
-    if "://" in domain:
-        domain = normalize_target(domain)
-
-    normalized_domain = normalize_target(domain)
-    url = f"https://crt.sh/?q=%25.{normalized_domain}&output=json"
-    try:
-        resp = requests.get(url, timeout=timeout)
-        if resp.status_code != 200:
-            return [domain]
-        try:
-            data = resp.json()
-        except Exception:
-            return [domain]
-
-        results = set()
-        if isinstance(data, list):
-            for item in data:
-                nv = item.get("name_value") if isinstance(item, dict) else None
-                if not nv:
-                    continue
-                for name in str(nv).splitlines():
-                    n = name.strip().lower()
-                    if not n:
-                        continue
-                    if n.startswith("*."):
-                        n = n[2:]
-                    results.add(n)
-
-        import re
-
-        valid_re = re.compile(r"^[a-z0-9.-]+$")
-        filtered = set()
-        for n in results:
-            if not valid_re.match(n):
-                continue
-            if n == normalized_domain or n.endswith("." + normalized_domain):
-                filtered.add(n)
-
-        # Keep the root host even if crt.sh returns only subdomains.
-        filtered.add(normalized_domain)
-
-        return sorted(filtered)
-    except Exception:
-        return [normalized_domain]
+    """DEPRECATED: Use discover_subdomains() instead."""
+    return discover_subdomains(domain, timeout)
 
 
 def sanity_check_crt_entries(domain: str, timeout: int) -> None:
@@ -455,7 +410,7 @@ def scan_target(
     ca_bundle: str | None = None,
     wordlist_path: str | None = None,
 ) -> Dict[str, Any]:
-    """Run passive checks for a target and its selected hosts."""
+    """Run host checks for a target and its selected hosts."""
     input_target = domain
     normalized_target = normalize_target(domain)
 
@@ -463,12 +418,9 @@ def scan_target(
         hosts_list = [normalized_target]
     else:
         hosts_list = discover_subdomains(normalized_target, timeout, wordlist_path=wordlist_path)
-        if normalized_target in hosts_list:
-            hosts_list = [normalized_target] + [
-                host for host in hosts_list if host != normalized_target
-            ]
-        else:
-            hosts_list = [normalized_target] + hosts_list
+        # Ensure root is first (discover_subdomains should already do this, but mocks may bypass it)
+        hosts_list = _ensure_root_host_first(normalized_target, hosts_list)
+
 
     if max_hosts is not None and isinstance(max_hosts, int) and max_hosts > 0:
         hosts_list = hosts_list[:max_hosts]
@@ -596,6 +548,7 @@ def scan_target(
                 "findings": [],
                 "details": [],
             }
+            entry["csp"] = {"findings": []}
             entry["tls"] = {
                 "present": False,
                 "not_after": None,
@@ -606,6 +559,7 @@ def scan_target(
                 "failure_type": None,
             }
             entry["risk_chains"] = []
+            entry["baseline_score"] = 0
 
         hosts_results.append(entry)
 

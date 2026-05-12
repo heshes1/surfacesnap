@@ -11,6 +11,16 @@ import certifi
 import dns.resolver
 import requests
 
+# Baseline security headers to check across all hosts
+BASELINE_HEADERS = {
+    "strict-transport-security": "Strict-Transport-Security",
+    "content-security-policy": "Content-Security-Policy",
+    "x-frame-options": "X-Frame-Options",
+    "x-content-type-options": "X-Content-Type-Options",
+    "referrer-policy": "Referrer-Policy",
+    "permissions-policy": "Permissions-Policy",
+}
+
 
 def _format_cert_name(name: Any) -> str | None:
     """Convert OpenSSL-style subject/issuer tuples into a readable string."""
@@ -116,7 +126,6 @@ def resolve_host(host: str, timeout: int) -> Dict[str, Any]:
                 for a in answers:
                     ips.append(str(a))
             except Exception as e:
-                # Record the error but continue trying other record types
                 if error_msg is None:
                     error_msg = str(e)
     except Exception as e:
@@ -136,14 +145,16 @@ def fetch_http_info(
     ca_bundle: str | None = None,
 ) -> Dict[str, Any]:
     """Fetch final-response HTTP metadata for a host."""
-    wanted = [
-        "strict-transport-security",
-        "content-security-policy",
-        "x-frame-options",
-        "x-content-type-options",
-        "referrer-policy",
-        "permissions-policy",
-    ]
+    baseline_keys = set(BASELINE_HEADERS.keys())
+    whitelist = {
+        "server",
+        "date",
+        "content-type",
+        "content-length",
+        "cache-control",
+        "location",
+    }
+    keep_keys = baseline_keys.union({"set-cookie"}).union(whitelist)
 
     session_headers = {"User-Agent": "SurfaceSnap/1.0"}
 
@@ -159,18 +170,6 @@ def fetch_http_info(
             verify=verify,
         )
         normalized = {k.lower(): v for k, v in resp.headers.items()}
-
-        baseline_keys = set(wanted)
-        whitelist = {
-            "server",
-            "date",
-            "content-type",
-            "content-length",
-            "cache-control",
-            "location",
-        }
-        keep_keys = baseline_keys.union({"set-cookie"}).union(whitelist)
-
         response_headers = {k: normalized[k] for k in keep_keys if k in normalized}
         final_scheme = urlparse(resp.url).scheme or "https"
 
@@ -194,18 +193,6 @@ def fetch_http_info(
                 headers=session_headers,
             )
             normalized = {k.lower(): v for k, v in resp.headers.items()}
-
-            baseline_keys = set(wanted)
-            whitelist = {
-                "server",
-                "date",
-                "content-type",
-                "content-length",
-                "cache-control",
-                "location",
-            }
-            keep_keys = baseline_keys.union({"set-cookie"}).union(whitelist)
-
             response_headers = {k: normalized[k] for k in keep_keys if k in normalized}
             final_scheme = urlparse(resp.url).scheme or "http"
 
@@ -217,7 +204,7 @@ def fetch_http_info(
                 "response_headers": response_headers,
                 "https_failed_reason": https_reason,
             }
-        except Exception:
+        except requests.exceptions.RequestException:
             return {
                 "scheme_used": None,
                 "status_code": None,
@@ -226,8 +213,8 @@ def fetch_http_info(
                 "response_headers": {},
                 "https_failed_reason": https_reason,
             }
-    except Exception:
-        # Other errors (e.g., invalid URL formation) - do not fallback to HTTP
+    except requests.exceptions.RequestException:
+        # Other network or request errors - do not fallback to HTTP
         return {
             "scheme_used": None,
             "status_code": None,
@@ -253,7 +240,10 @@ def check_http_reachable(
             headers=headers,
         )
         return hasattr(resp, "status_code")
+    except requests.exceptions.RequestException:
+        return False
     except Exception:
+        # Unexpected error - treat as unreachable
         return False
 
 
@@ -261,18 +251,9 @@ def baseline_header_check(headers: Dict[str, str]) -> Dict[str, Any]:
     """Check whether the tracked security headers appear in a response."""
     normalized = {k.lower(): v for k, v in (headers or {}).items()}
 
-    baseline = {
-        "strict-transport-security": "Strict-Transport-Security",
-        "content-security-policy": "Content-Security-Policy",
-        "x-frame-options": "X-Frame-Options",
-        "x-content-type-options": "X-Content-Type-Options",
-        "referrer-policy": "Referrer-Policy",
-        "permissions-policy": "Permissions-Policy",
-    }
-
-    present = {display: (lower in normalized) for lower, display in baseline.items()}
+    present = {display: (lower in normalized) for lower, display in BASELINE_HEADERS.items()}
     missing = [
-        display for lower, display in baseline.items() if lower not in normalized
+        display for lower, display in BASELINE_HEADERS.items() if lower not in normalized
     ]
     
     # Create findings for missing headers with severity labels
@@ -311,24 +292,19 @@ def analyze_csp(headers: Dict[str, str]) -> Dict[str, Any]:
         if not directive:
             continue
         
-        # Check for unsafe-inline
-        if "unsafe-inline" in directive.lower():
+        normalized_directive = directive.lower()
+        if "unsafe-inline" in normalized_directive:
             findings.append({
                 "severity": "medium",
                 "message": f"CSP directive contains 'unsafe-inline'",
                 "finding_type": "csp_unsafe_inline"
             })
-        
-        # Check for unsafe-eval
-        if "unsafe-eval" in directive.lower():
+        if "unsafe-eval" in normalized_directive:
             findings.append({
                 "severity": "high",
                 "message": f"CSP directive contains 'unsafe-eval'",
                 "finding_type": "csp_unsafe_eval"
             })
-        
-        # Check for wildcard * (but not *. which is subdomain wildcard)
-        # Match standalone asterisk or space-separated asterisk
         if re.search(r"(?:^|\s)\*(?:\s|$)", directive):
             findings.append({
                 "severity": "medium",
@@ -344,58 +320,6 @@ def _is_session_like_cookie(name: str) -> bool:
     name_lower = name.lower()
     session_keywords = ("session", "auth", "token", "jwt", "sid")
     return any(keyword in name_lower for keyword in session_keywords)
-
-
-def _analyze_csp(headers: Dict[str, str]) -> Dict[str, Any]:
-    """Parse Content-Security-Policy header for unsafe directives."""
-    if not headers:
-        return {"findings": []}
-
-    norm = {k.lower(): v for k, v in (headers or {}).items()}
-    csp_value = norm.get("content-security-policy")
-    
-    if not csp_value:
-        return {"findings": []}
-
-    findings: List[Dict[str, str]] = []
-    
-    # Split directives by semicolon, handling malformed input safely.
-    try:
-        directives = str(csp_value).split(";")
-    except Exception:
-        return {"findings": []}
-    
-    for directive in directives:
-        directive = directive.strip()
-        if not directive:
-            continue
-        
-        # Check for unsafe-inline
-        if "unsafe-inline" in directive.lower():
-            findings.append({
-                "severity": "medium",
-                "message": f"CSP directive contains 'unsafe-inline'",
-                "finding_type": "csp_unsafe_inline"
-            })
-        
-        # Check for unsafe-eval
-        if "unsafe-eval" in directive.lower():
-            findings.append({
-                "severity": "high",
-                "message": f"CSP directive contains 'unsafe-eval'",
-                "finding_type": "csp_unsafe_eval"
-            })
-        
-        # Check for wildcard * (but not *. which is subdomain wildcard)
-        # Match standalone asterisk or space-separated asterisk
-        if re.search(r"(?:^|\s)\*(?:\s|$)", directive):
-            findings.append({
-                "severity": "medium",
-                "message": f"CSP directive contains wildcard '*'",
-                "finding_type": "csp_wildcard"
-            })
-    
-    return {"findings": findings}
 
 
 def analyze_cookies(
